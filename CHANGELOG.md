@@ -19,3 +19,5 @@ Pending login exposes a Cancel login button and expires after five minutes. Canc
 GUI layout tests now explicitly set allowable window sizes instead of inheriting cloud desktop limits, and cover expanded logs on the 751px cloud-sized desktop.
 
 Keep only the four Chinese-named CMD launchers; each directly invokes its installer, GUI or command runner. Documentation, packaging and Windows launcher checks use the same entrypoints.
+
+Python discovery now tolerates missing launcher versions on Windows PowerShell 5.1, falls back to other supported runtimes, and reports a clear installation hint if none is available. Real shell regression checks cover missing 3.12, PATH fallback and explicit invalid runtimes.

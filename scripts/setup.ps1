@@ -6,22 +6,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $stateRoot 'tmp'),(Join-Pat
 $env:TEMP=Join-Path $stateRoot 'tmp';$env:TMP=$env:TEMP;$env:TMPDIR=$env:TEMP
 $env:PIP_CACHE_DIR=Join-Path $stateRoot 'cache/pip'
 $env:PYTHONUTF8='1';$env:PYTHONDONTWRITEBYTECODE='1'
-$probe='import sys; print(sys.executable); sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)'
-if (-not $PythonExe) {
-    foreach ($version in @('-3.12','-3.11')) {
-        if (Get-Command py -ErrorAction SilentlyContinue) {
-            $found=& py $version -c $probe 2>$null
-            if ($LASTEXITCODE -eq 0) { $PythonExe=$found;break }
-        }
-    }
-}
-if (-not $PythonExe -and (Get-Command python -ErrorAction SilentlyContinue)) {
-    $found=& python -c $probe
-    if ($LASTEXITCODE -eq 0) { $PythonExe=$found }
-}
-if (-not $PythonExe) { throw 'Please install Python 3.11 or 3.12 with Tcl/Tk, then rerun setup.' }
-& $PythonExe -c $probe
-if ($LASTEXITCODE -ne 0) { throw 'Supported Python versions: 3.11 and 3.12.' }
+. (Join-Path $PSScriptRoot 'python_probe.ps1')
+$PythonExe=Find-SetupPython -PythonExe $PythonExe
+Write-Host ('Using Python: '+$PythonExe)
 $venvPython=Join-Path $projectRoot '.venv/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $venvPython)) {
     & $PythonExe -m venv (Join-Path $projectRoot '.venv')
