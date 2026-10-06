@@ -1,0 +1,29 @@
+name: Windows checks
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .runtime/tmp | Out-Null
+          $env:TEMP = "$pwd/.runtime/tmp"
+          $env:TMP = $env:TEMP
+          $env:TMPDIR = $env:TEMP
+          $env:PIP_CACHE_DIR = "$pwd/.runtime/cache/pip"
+          python -m pip install --index-url https://pypi.org/simple -r requirements.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -B project.py bootstrap
+      - name: Run account-free tests
+        run: python -B project.py test
