@@ -50,8 +50,12 @@ class GuiTests(unittest.TestCase):
                 app.events.put(('models_error','unit failure'));app.poll()
                 self.assertIn('缓存',app.catalog_status.get())
                 with self.assertRaises(ValueError):build_command(str(source),False,'',False,None,False,False)
+                # CI's desktop can cap Tk windows at 751px. Explicitly allow
+                # the requested test sizes before checking layout at 820+px.
+                w.maxsize(1200,1200)
                 for width,height in [(1000,848),(860,820)]:
                     w.geometry(f'{width}x{height}');w.update()
+                    self.assertEqual(w.winfo_height(),height)
                     self.assertGreaterEqual(app.activity.winfo_height(),180)
             finally:w.destroy()
 
@@ -112,3 +116,28 @@ class GuiTests(unittest.TestCase):
                 self.assertIn('5 分钟',app.status.get())
                 self.assertEqual(str(app.refresh_models_button.cget('state')),'normal')
             finally:w.destroy()
+
+    def test_log_expands_on_small_desktop(self):
+        import tkinter as tk
+        from pdf_gui import TranslationWindow
+        w=tk.Tk();app=TranslationWindow(w,refresh_catalog=False)
+        try:
+            # Reproduce the cloud runner's actual window-height constraint.
+            w.minsize(860,640);w.maxsize(1000,751)
+            w.geometry('1000x848');w.update()
+            self.assertEqual(w.winfo_height(),751)
+            initial=app.activity.winfo_height()
+            self.assertGreater(initial,0)
+            self.assertTrue(app.log_scrollbar.winfo_ismapped())
+            app.expand_log_button.invoke();w.update()
+            self.assertTrue(app.log_expanded)
+            self.assertFalse(app.file_box.winfo_ismapped())
+            self.assertFalse(app.options_box.winfo_ismapped())
+            self.assertGreater(app.activity.winfo_height(),initial)
+            self.assertGreaterEqual(app.activity.winfo_height(),180)
+            app.expand_log_button.invoke();w.update()
+            self.assertFalse(app.log_expanded)
+            self.assertTrue(app.file_box.winfo_ismapped())
+            self.assertTrue(app.options_box.winfo_ismapped())
+            self.assertEqual(app.activity.winfo_height(),initial)
+        finally:w.destroy()

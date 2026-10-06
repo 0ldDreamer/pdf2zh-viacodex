@@ -15,3 +15,5 @@ Login always starts a fresh isolated browser authorization. Only successful, che
 Isolated login homes now live in private application state outside TEMP, avoiding the official CLI warning about creating PATH helper binaries in temporary storage.
 
 Pending login exposes a Cancel login button and expires after five minutes. Cancel/timeout stops the login process, cleans the isolated login home, preserves the existing account and restores controls. Model refresh and translation remain disabled while login is pending.
+
+GUI layout tests now explicitly set allowable window sizes instead of inheriting cloud desktop limits, and cover expanded logs on the 751px cloud-sized desktop.
