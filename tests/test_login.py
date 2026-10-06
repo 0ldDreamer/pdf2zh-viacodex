@@ -9,6 +9,7 @@ import queue
 import subprocess
 import sys
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -43,11 +44,16 @@ class LoginTests(unittest.TestCase):
                 self.assertNotIn('logout',command)
                 temporary=Path(options['env']['CODEX_HOME']);staging.append(temporary)
                 self.assertNotEqual(temporary,home)
+                self.assertTrue(temporary.is_relative_to(state/'login-sessions'))
+                self.assertFalse(temporary.is_relative_to(state/'tmp'))
                 self.assertFalse((temporary/'auth.json').exists())
                 if existing:self.assertEqual(current.read_bytes(),previous)
                 if new_auth=='valid':(temporary/'auth.json').write_bytes(replacement)
                 elif new_auth=='invalid':(temporary/'auth.json').write_text('{"auth_mode":"apikey"}',encoding='utf-8')
-                return login_code
+                process=Mock()
+                process.poll.return_value=login_code
+                process.wait.return_value=login_code
+                return process
             def verify(command,**options):
                 self.assertEqual(command[-2:],['login','status'])
                 self.assertEqual(Path(options['env']['CODEX_HOME']),staging[0])
@@ -55,7 +61,7 @@ class LoginTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command,verify_code,b'',b'Logged in using ChatGPT')
             with patch.object(entry,'ROOT',state), patch.object(entry,'CODEX_HOME',home), \
                  patch.object(entry,'prepare_environment'),patch.object(entry,'find_codex',return_value='unit-codex'), \
-                 patch.object(entry.subprocess,'call',side_effect=authorize) as login, \
+                 patch.object(entry.subprocess,'Popen',side_effect=authorize) as login, \
                  patch.object(entry.subprocess,'run',side_effect=verify) as check, \
                  patch.object(sys,'argv',['project.py','login']+(['--device-auth'] if device else [])), \
                  contextlib.redirect_stdout(io.StringIO()):
@@ -114,7 +120,7 @@ class LoginTests(unittest.TestCase):
     @unittest.skipUnless(os.name=='nt','Windows login script launcher')
     def test_gui_calls_shared_cmd_and_streams_login_output(self):
         from pdf_gui import TranslationWindow
-        window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,
+        window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
                                events=queue.Queue(),status=Mock(),sync_model_controls=Mock())
         process=Mock()
         process.wait.return_value=0
@@ -143,14 +149,14 @@ class LoginTests(unittest.TestCase):
     def test_real_windows_launch_with_chinese_spaces_and_exit_codes(self):
         # Real cmd.exe -> Chinese alias -> login.cmd -> PowerShell, no accounts.
         from pdf_gui import TranslationWindow
-        for exit_code in (0,7):
+        for exit_code in (0,7,124,130):
             with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
                 project=Path(folder)/'中文 空格 项目'
                 (project/'scripts').mkdir(parents=True)
                 for name in ('登录ChatGPT.cmd','login.cmd'):
                     (project/name).write_bytes((PROJECT_ROOT/name).read_bytes())
                 (project/'scripts/run.ps1').write_text(f"Write-Output 'LOGIN_SCRIPT_REACHED'\nexit {exit_code}\n",encoding='utf-8')
-                window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,
+                window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
                                        events=queue.Queue(),status=Mock(),sync_model_controls=Mock())
                 with patch('pdf_gui.PROJECT_ROOT',project), patch('pdf_gui.threading.Thread') as thread:
                     thread.side_effect=lambda **kw:SimpleNamespace(start=kw['target'])
@@ -160,3 +166,32 @@ class LoginTests(unittest.TestCase):
                 self.assertIn(('line','LOGIN_SCRIPT_REACHED'),events)
                 self.assertIn(('login_done',exit_code),events)
                 self.assertIsNone(window.login_process)
+
+    def test_cancel_flag_ends_pending_login_without_waiting_for_timeout(self):
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
+            flag=Path(folder)/'cancel';flag.touch()
+            process=Mock();process.poll.return_value=None
+            with patch.dict(os.environ,{'PDF2ZH_LOGIN_CANCEL_FILE':str(flag)}), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(entry.wait_for_login(process),130)
+            process.terminate.assert_called_once()
+            process.wait.assert_called_once_with(timeout=5)
+
+    def test_default_login_timeout_is_exactly_five_minutes(self):
+        process=Mock();process.poll.return_value=None
+        with patch.object(entry,'login_cancel_requested',return_value=False), \
+             patch.object(entry.time,'monotonic',side_effect=[0,299,300]), \
+             patch.object(entry.time,'sleep') as sleep, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(entry.wait_for_login(process),124)
+        sleep.assert_called_once_with(0.1)
+        process.terminate.assert_called_once()
+
+    def test_real_pending_process_is_stopped_on_timeout(self):
+        process=subprocess.Popen([sys.executable,'-B','-c','import time; time.sleep(60)'],
+                                 stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        try:
+            with patch.object(entry,'login_cancel_requested',return_value=False), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(entry.wait_for_login(process,timeout=0.15),124)
+            self.assertIsNotNone(process.poll())
+        finally:
+            if process.poll() is None:process.kill();process.wait(timeout=5)

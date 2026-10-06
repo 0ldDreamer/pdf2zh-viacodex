@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from runtime import ROOT, CODE_ROOT, PROJECT_ROOT, OUTPUT_ROOT, prepare_environment, translation_profile, open_file
@@ -96,6 +97,8 @@ class TranslationWindow:
         self.catalog_loading = False
         self.login_in_progress = False
         self.login_process = None
+        self.login_cancel_requested = threading.Event()
+        self.login_cancel_file = None
         profile, _ = translation_profile()
         self.model = tk.StringVar(value='' if profile['model']=='default' else profile['model'])
         self.reasoning_effort = tk.StringVar(value=profile['model_reasoning_effort'])
@@ -284,19 +287,42 @@ class TranslationWindow:
         state = 'disabled' if self.busy or self.login_in_progress else 'readonly'
         self.model_box.configure(state=state)
         self.effort_box.configure(state=state)
+        cancelling = self.login_in_progress and self.login_cancel_requested.is_set()
         self.refresh_models_button.configure(state='disabled' if self.busy or self.catalog_loading or self.login_in_progress else 'normal')
-        self.login_button.configure(state='disabled' if self.busy or self.catalog_loading or self.login_in_progress else 'normal')
+        self.login_button.configure(text='取消登录' if self.login_in_progress else '登录 ChatGPT',
+            state='disabled' if self.busy or self.catalog_loading or cancelling else 'normal')
         self.start_button.configure(state='disabled' if self.busy or self.login_in_progress else 'normal')
         if not self.busy and self.paused_command:
             self.stop_button.configure(state='disabled' if self.login_in_progress else 'normal')
 
-    def login_chatgpt(self):
-        if self.busy or self.catalog_loading or self.login_in_progress:
+    def cancel_login(self):
+        if not self.login_in_progress or self.login_cancel_requested.is_set():
             return
+        try:
+            self.login_cancel_file.touch()
+        except OSError as exc:
+            self.note('无法取消登录：' + str(exc))
+            return
+        self.login_cancel_requested.set()
+        self.status.set('正在取消未完成的登录；原账号保持不变…')
+        self.sync_model_controls()
+
+    def login_chatgpt(self):
+        if self.login_in_progress:
+            self.cancel_login()
+            return
+        if self.busy or self.catalog_loading:
+            return
+        sessions = ROOT / 'login-sessions'
+        sessions.mkdir(mode=0o700, exist_ok=True)
+        cancel_file = sessions / ('cancel-' + uuid.uuid4().hex)
+        self.login_cancel_file = cancel_file
+        self.login_cancel_requested.clear()
         self.login_in_progress = True
         self.sync_model_controls()
-        self.status.set('正在打开 ChatGPT 授权；登录成功后切换账号，请查看下方日志')
+        self.status.set('正在等待 ChatGPT 授权（最多 5 分钟）')
         def worker():
+            return_code = 1
             try:
                 script = PROJECT_ROOT / '登录ChatGPT.cmd'
                 if not script.is_file():
@@ -304,8 +330,8 @@ class TranslationWindow:
                 environment = os.environ.copy()
                 environment['PDF2ZH_LOGIN_FROM_GUI'] = '1'
                 environment['PDF2ZH_LOGIN_SCRIPT'] = str(script)
-                # Pass cmd.exe its own quoting syntax; list2cmdline would escape
-                # the inner path quotes using backslashes that cmd does not accept.
+                environment['PDF2ZH_LOGIN_CANCEL_FILE'] = str(cancel_file)
+                # cmd requires its own quoting syntax rather than list2cmdline.
                 command = f'"{os.environ.get("COMSPEC", "cmd.exe")}" /d /c call "%PDF2ZH_LOGIN_SCRIPT%"'
                 process = subprocess.Popen(command, cwd=PROJECT_ROOT, env=environment,
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -314,12 +340,13 @@ class TranslationWindow:
                 with process.stdout:
                     for line in process.stdout:
                         if line.strip():self.events.put(('line', line.strip()))
-                self.events.put(('login_done', process.wait()))
+                return_code = process.wait()
             except Exception as exc:
-                self.events.put(('login_done', 1))
                 self.events.put(('error', str(exc)))
             finally:
                 self.login_process = None
+                cancel_file.unlink(missing_ok=True)
+                self.events.put(('login_done', return_code))
         threading.Thread(target=worker,daemon=True).start()
 
     def refresh_models(self):
@@ -575,14 +602,25 @@ class TranslationWindow:
                 kind = event[0]
                 if kind == 'login_done':
                     self.login_in_progress = False
+                    self.login_cancel_requested.clear()
+                    self.login_cancel_file = None
                     self.sync_model_controls()
-                    self.status.set('ChatGPT 登录成功，已切换至本次授权的账号' if event[1] == 0 else '登录未完成；原账号保留，请查看下方日志')
-                    self.note('授权成功，已切换账号，正在刷新模型列表。' if event[1] == 0 else f'登录脚本退出码：{event[1]}。原账号保持不变。')
                     if event[1] == 0:
+                        self.status.set('ChatGPT 登录成功，已切换至本次授权的账号')
+                        self.note('授权成功，已切换账号，正在刷新模型列表。')
                         self.models = []
                         self.model_box.configure(values=[])
                         self.effort_box.configure(values=[])
                         self.refresh_models()
+                    elif event[1] == 124:
+                        self.status.set('登录等待已超过 5 分钟；原账号保留')
+                        self.note('登录等待超时，已结束本次授权；界面操作已恢复。')
+                    elif event[1] == 130:
+                        self.status.set('登录已取消；原账号保留')
+                        self.note('本次登录已取消；界面操作已恢复，原账号保持不变。')
+                    else:
+                        self.status.set('登录未完成；原账号保留，请查看下方日志')
+                        self.note(f'登录脚本退出码：{event[1]}。原账号保持不变。')
                 elif kind == 'models':
                     self.catalog_loading = False
                     self.apply_catalog(event[1])
@@ -632,8 +670,8 @@ class TranslationWindow:
             open_file(path)
 
     def close(self):
-        if self.login_process is not None and self.login_process.poll() is None:
-            subprocess.run(['taskkill.exe','/PID',str(self.login_process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=HIDDEN)
+        if self.login_in_progress:
+            self.cancel_login()
         if self.busy:
             if not messagebox.askyesno('关闭窗口', '翻译仍在进行。停止任务并关闭窗口？', parent=self.window):
                 return

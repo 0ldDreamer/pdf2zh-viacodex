@@ -11,3 +11,7 @@ Fixed Windows cmd path quoting for the GUI login launcher. Script output and fai
 Chinese and bilingual PDF filenames now include the model ID from the pinned translation job profile.
 
 Login always starts a fresh isolated browser authorization. Only successful, checked credentials activate the new account, with the prior login preserved in private local account history; cancellation/failure leaves the current account unchanged.
+
+Isolated login homes now live in private application state outside TEMP, avoiding the official CLI warning about creating PATH helper binaries in temporary storage.
+
+Pending login exposes a Cancel login button and expires after five minutes. Cancel/timeout stops the login process, cleans the isolated login home, preserves the existing account and restores controls. Model refresh and translation remain disabled while login is pending.

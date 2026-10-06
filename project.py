@@ -10,26 +10,53 @@ import sys
 import tempfile
 import shutil
 import uuid
+import time
 
 PROJECT_ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(PROJECT_ROOT/'app'))
 from runtime import prepare_environment, ensure_chatgpt_auth, find_codex, CODEX_HOME, ROOT
 
 
+def login_cancel_requested():
+    flag=os.environ.get('PDF2ZH_LOGIN_CANCEL_FILE')
+    return bool(flag and Path(flag).exists())
+
+
+def wait_for_login(process, timeout=300):
+    deadline=time.monotonic()+timeout
+    while process.poll() is None:
+        cancelled=login_cancel_requested()
+        if cancelled or time.monotonic()>=deadline:
+            process.terminate()
+            try:process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill();process.wait(timeout=5)
+            print('登录已取消，原账号保持不变。' if cancelled else '登录等待超时，原账号保持不变。',flush=True)
+            return 130 if cancelled else 124
+        time.sleep(0.1)
+    return process.wait()
+
+
 def login_chatgpt(arguments):
     """Authorize separately; preserve old credentials before a successful switch."""
     prefix=[find_codex(),'-c','model_provider="openai"','-c','forced_login_method="chatgpt"','-c','cli_auth_credentials_store="file"']
     # A fresh private home opens authorization without touching the current login.
-    with tempfile.TemporaryDirectory(prefix='chatgpt-login-',dir=ROOT/'tmp') as folder:
+    # Private application state, outside TEMP: Codex creates PATH helpers here.
+    sessions=ROOT/'login-sessions'
+    sessions.mkdir(mode=0o700,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='chatgpt-login-',dir=sessions) as folder:
         login_home=Path(folder)
         (login_home/'config.toml').write_text('model_provider = "openai"\nforced_login_method = "chatgpt"\ncli_auth_credentials_store = "file"\n',encoding='utf-8')
         environment=os.environ.copy()
         environment['CODEX_HOME']=str(login_home)
         print('正在打开 ChatGPT 登录授权；原账号会保留，授权成功后才切换。',flush=True)
-        result=subprocess.call(prefix+['login']+arguments,cwd=ROOT,env=environment)
+        if login_cancel_requested():return 130
+        process=subprocess.Popen(prefix+['login']+arguments,cwd=ROOT,env=environment)
+        result=wait_for_login(process)
         if result:
             print('登录已取消或未完成，原账号保持不变。',flush=True)
             return result
+        if login_cancel_requested():return 130
         candidate=login_home/'auth.json'
         try:
             auth=json.loads(candidate.read_text(encoding='utf-8-sig'))
@@ -41,12 +68,14 @@ def login_chatgpt(arguments):
         status=subprocess.run(prefix+['login','status'],cwd=ROOT,env=environment,capture_output=True,timeout=20)
         if status.returncode or b'ChatGPT' not in status.stdout+status.stderr:
             raise RuntimeError('新账号登录验证未通过，原账号保持不变。')
+        if login_cancel_requested():return 130
         current=CODEX_HOME/'auth.json'
         if current.exists():
             backup=CODEX_HOME/'account-history'/uuid.uuid4().hex
             backup.mkdir(parents=True,mode=0o700)
             shutil.copy2(current,backup/'auth.json')
         # Same filesystem: switch atomically; the prior file remains in history.
+        if login_cancel_requested():return 130
         os.replace(candidate,current)
     for cache in (CODEX_HOME/'models_cache.json',ROOT/'cache/official-model-catalog.json'):
         try:cache.unlink(missing_ok=True)

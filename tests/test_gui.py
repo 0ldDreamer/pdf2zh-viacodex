@@ -79,3 +79,36 @@ class GuiTests(unittest.TestCase):
             app.events.put(('login_done',1));app.poll()
             self.assertIn('原账号保留',app.status.get())
         finally:w.destroy()
+
+    def test_cancel_login_button_and_timeout_restore_controls(self):
+        import tkinter as tk
+        from pdf_gui import TranslationWindow
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
+            w=tk.Tk();app=TranslationWindow(w,refresh_catalog=False)
+            try:
+                app.catalog_loading=False
+                app.paused_command=['unit'];app.paused_settings={'unit':True}
+                app.login_in_progress=True
+                app.login_cancel_file=Path(folder)/'cancel'
+                app.sync_model_controls()
+                self.assertEqual(app.login_button.cget('text'),'取消登录')
+                self.assertEqual(str(app.login_button.cget('state')),'normal')
+                for button in (app.refresh_models_button,app.start_button,app.stop_button):
+                    self.assertEqual(str(button.cget('state')),'disabled')
+                with patch('pdf_gui.fetch_models') as fetch:
+                    app.refresh_models();fetch.assert_not_called()
+                app.login_button.invoke()
+                self.assertTrue(app.login_cancel_file.exists())
+                self.assertTrue(app.login_cancel_requested.is_set())
+                app.events.put(('login_done',130));app.poll()
+                self.assertFalse(app.login_in_progress)
+                self.assertEqual(app.login_button.cget('text'),'登录 ChatGPT')
+                self.assertIn('已取消',app.status.get())
+                for button in (app.refresh_models_button,app.start_button,app.stop_button):
+                    self.assertEqual(str(button.cget('state')),'normal')
+                app.login_in_progress=True
+                app.events.put(('login_done',124));app.poll()
+                self.assertFalse(app.login_in_progress)
+                self.assertIn('5 分钟',app.status.get())
+                self.assertEqual(str(app.refresh_models_button.cget('state')),'normal')
+            finally:w.destroy()
