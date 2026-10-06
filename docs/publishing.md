@@ -14,7 +14,7 @@ git remote add origin https://github.com/YOUR_ACCOUNT/pdf2zh-viacodex.git
 git push -u origin main
 ```
 
-`YOUR_ACCOUNT` 只存在于本说明示例，不是项目依赖。无需提交 Node/Python 安装目录；另一台电脑运行 setup.cmd 重建。
+`YOUR_ACCOUNT` 只存在于本说明示例，不是项目依赖。无需提交 Node/Python 安装目录；另一台电脑运行 安装依赖.cmd 重建。
 
 生成可分享源码包：
 

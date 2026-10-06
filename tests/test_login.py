@@ -147,13 +147,13 @@ class LoginTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name=='nt','Windows command execution')
     def test_real_windows_launch_with_chinese_spaces_and_exit_codes(self):
-        # Real cmd.exe -> Chinese alias -> login.cmd -> PowerShell, no accounts.
+        # Real cmd.exe -> Chinese login launcher -> PowerShell, no accounts.
         from pdf_gui import TranslationWindow
         for exit_code in (0,7,124,130):
             with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
                 project=Path(folder)/'中文 空格 项目'
                 (project/'scripts').mkdir(parents=True)
-                for name in ('登录ChatGPT.cmd','login.cmd'):
+                for name in ('登录ChatGPT.cmd',):
                     (project/name).write_bytes((PROJECT_ROOT/name).read_bytes())
                 (project/'scripts/run.ps1').write_text(f"Write-Output 'LOGIN_SCRIPT_REACHED'\nexit {exit_code}\n",encoding='utf-8')
                 window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),

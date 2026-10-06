@@ -40,4 +40,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 & $venvPython -B (Join-Path $projectRoot 'project.py') test
 if ($LASTEXITCODE -ne 0) { throw 'Self tests failed.' }
-Write-Host 'SETUP PASS. Next: run login.cmd, then start.cmd.'
+Write-Host 'SETUP PASS. Next: use the ChatGPT login launcher, then the PDF translation launcher.'

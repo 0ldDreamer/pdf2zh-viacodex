@@ -2,9 +2,9 @@
 
 ## 首次运行
 
-`setup.cmd` 创建专用 `.venv` 并安装固定版本依赖，配置本项目的缓存路径。已有官方 Codex 可直接使用；否则需要 Node.js，脚本将官方 CLI 安装到 `.runtime/tools`。
+`安装依赖.cmd` 创建专用 `.venv` 并安装固定版本依赖，配置本项目的缓存路径。已有官方 Codex 可直接使用；否则需要 Node.js，脚本将官方 CLI 安装到 `.runtime/tools`。
 
-界面“登录 ChatGPT”按钮调用 `登录ChatGPT.cmd` → `login.cmd`，脚本的状态、登录地址及错误实时显示在界面日志中；无需在终端按键。每次运行都在本项目专用 `.runtime/login-sessions/` 下创建独立登录目录并启动新的官方浏览器授权（完成或取消后清理该次目录），不提前退出当前账号。授权成功且登录信息检查通过后，先将原凭据备份到 `.runtime/codex-home/account-history/<唯一目录>/auth.json`，再切换为本次授权的账号；取消或失败则原账号不变。备份仅留在本机私有运行目录，请勿分享。登录等待期间，按钮变为“取消登录”；点击后结束本次授权并保留原账号。等待超过 5 分钟会自动超时，结束登录等待。等待及取消处理期间，“刷新模型”和“开始／继续翻译”保持禁用，登录成功、取消、超时或失败后恢复操作。切换成功后重新获取模型列表。需要远程或无浏览器环境时可运行 `.venv/Scripts/python.exe project.py login --device-auth`。设备登录须账号允许。
+界面“登录 ChatGPT”按钮调用 `登录ChatGPT.cmd`，脚本的状态、登录地址及错误实时显示在界面日志中；无需在终端按键。每次运行都在本项目专用 `.runtime/login-sessions/` 下创建独立登录目录并启动新的官方浏览器授权（完成或取消后清理该次目录），不提前退出当前账号。授权成功且登录信息检查通过后，先将原凭据备份到 `.runtime/codex-home/account-history/<唯一目录>/auth.json`，再切换为本次授权的账号；取消或失败则原账号不变。备份仅留在本机私有运行目录，请勿分享。登录等待期间，按钮变为“取消登录”；点击后结束本次授权并保留原账号。等待超过 5 分钟会自动超时，结束登录等待。等待及取消处理期间，“刷新模型”和“开始／继续翻译”保持禁用，登录成功、取消、超时或失败后恢复操作。切换成功后重新获取模型列表。需要远程或无浏览器环境时可运行 `.venv/Scripts/python.exe project.py login --device-auth`。设备登录须账号允许。
 
 ## 模型与思考强度
 
@@ -21,10 +21,10 @@
 ## 故障排查
 
 - 缺少 Python：安装 3.11 / 3.12 完整版，并包含 Tcl/Tk。
-- 缺少 Codex：安装 Node.js LTS，再运行 setup.cmd；或安装官方 Codex 后加入 PATH。`PDF2ZH_CODEX_EXE` 可指向自己的官方可执行文件。
+- 缺少 Codex：安装 Node.js LTS，再运行 安装依赖.cmd；或安装官方 Codex 后加入 PATH。`PDF2ZH_CODEX_EXE` 可指向自己的官方可执行文件。
 - 登录无效或超额：重新登录或等待额度恢复；不配置 API Key 作为备用。
 - 下载失败：检查代理、证书和网络。不要将不明凭据填进镜像地址或提交到源码。
-- 缓存隔离检查失败：依赖升级覆盖了路径适配，重新运行 setup.cmd。只支持 requirements.txt 中锁定的版本。
+- 缓存隔离检查失败：依赖升级覆盖了路径适配，重新运行 安装依赖.cmd。只支持 requirements.txt 中锁定的版本。
 - GUI 无法启动：运行 `.venv/Scripts/python.exe project.py gui` 查看终端错误。
 - 译文不完整：看 `manifest.json`、`translation.log` 与 `batch-failed.json`。status 不是 completed 的任务不能作为完成结果。
 

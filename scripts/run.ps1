@@ -6,6 +6,6 @@ New-Item -ItemType Directory -Force -Path (Join-Path $stateRoot 'tmp') | Out-Nul
 $env:TEMP=Join-Path $stateRoot 'tmp';$env:TMP=$env:TEMP;$env:TMPDIR=$env:TEMP
 $env:PYTHONUTF8='1';$env:PYTHONDONTWRITEBYTECODE='1'
 $python=Join-Path $projectRoot '.venv/Scripts/python.exe'
-if (-not (Test-Path -LiteralPath $python)) { throw 'Run setup.cmd first.' }
+if (-not (Test-Path -LiteralPath $python)) { throw 'Run the dependency installer first.' }
 & $python -B (Join-Path $projectRoot 'project.py') $Command @Arguments
 exit $LASTEXITCODE
