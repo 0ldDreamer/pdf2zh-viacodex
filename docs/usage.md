@@ -22,7 +22,7 @@
 | `翻译PDF.cmd` | 打开翻译界面 |
 | `检查环境.cmd` | 检查依赖、Codex CLI、缓存隔离与登录状态 |
 
-首次安装依赖，以及首次翻译时下载版面模型、字体，可能需要一些时间。安装与翻译所需文件保存在项目目录内，具体位置见下文“本机数据”。
+安装脚本会预下载版面分析与文字检测模型（合计约 80 MB），下载后校验并保存到本机缓存。已有有效模型直接复用；下载源失败时尝试备用源。首次翻译仍可能需要准备字体等资源。安装与翻译所需文件保存在项目目录内，具体位置见下文“本机数据”。
 
 ## 2. 登录与切换账号
 
@@ -86,7 +86,7 @@
 例如：
 
 ```text
-翻译配置：模型：gpt-6.1-sol；思考强度：low；每批最多 12 段，最多 8 批并行。
+翻译配置：模型：gpt-6.1-sol；思考强度：low；每批最多 12 段，最多 8 批并行；连接：HTTPS/SSE。
 翻译进度：正在初始化翻译引擎并解析 PDF，请稍候。首次运行可能需要下载版面模型或字体，此阶段可能耗时较长。
 翻译进度：段落处理 16/27，新增译文 12 段，缓存 1 段，并行 2 批。
 ```
@@ -159,6 +159,7 @@ paper_中英对照_gpt-6.1-sol.pdf
 | `.runtime/codex-home/` | 本工具的 ChatGPT 登录信息与模型配置 |
 | `.runtime/config/gui-settings.json` | 界面选项及上次选择文献的文件夹 |
 | `.runtime/cache/` | 译文及依赖等缓存 |
+| `.runtime/cache/babeldoc/models/` | 已下载并校验的 PDF 解析模型 |
 | `.runtime/tmp/` | PDF 副本和排版中间文件 |
 | `outputs/` | 默认结果保存位置 |
 
@@ -172,6 +173,12 @@ paper_中英对照_gpt-6.1-sol.pdf
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -PythonExe "C:\Python312\python.exe"
+```
+
+单独准备或修复本地模型缓存：
+
+```powershell
+.\.venv\Scripts\python.exe -B project.py predownload
 ```
 
 直接翻译原 PDF 的前三页，生成中英对照版本：

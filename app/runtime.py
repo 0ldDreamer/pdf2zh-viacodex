@@ -92,6 +92,11 @@ def translation_codex():
     # Translation needs neither the coding-agent instructions nor its tool catalog.
     # Apply this to translation subprocesses only; login and model/list stay unchanged.
     return ensure_chatgpt_auth() + [
+        '-c','model_provider="pdf-https"',
+        '-c','model_providers.pdf-https.name="OpenAI HTTPS"',
+        '-c','model_providers.pdf-https.requires_openai_auth=true',
+        '-c','model_providers.pdf-https.wire_api="responses"',
+        '-c','model_providers.pdf-https.supports_websockets=false',
         '-c','model_instructions_file='+json.dumps(str(CODE_ROOT/'translation_instructions.md')),
         '-c','features.apps=false', '-c','features.plugins=false',
         '-c','features.shell_tool=false',

@@ -86,7 +86,7 @@ def login_chatgpt(arguments):
 
 def main():
     parser=argparse.ArgumentParser(description='pdf2zh-viacodex: PDF translation with official Codex subscription login')
-    parser.add_argument('command',choices=['gui','translate','login','logout','models','doctor','bootstrap','test','codex-check'])
+    parser.add_argument('command',choices=['gui','translate','login','logout','models','doctor','bootstrap','test','codex-check','predownload'])
     args,rest=parser.parse_known_args()
     prepare_environment()
     if args.command=='codex-check':
@@ -94,6 +94,9 @@ def main():
     if args.command=='bootstrap':
         from vendor_isolation import patch_dependencies
         patch_dependencies();print('CACHE ISOLATION PASS');return 0
+    if args.command=='predownload':
+        from model_assets import preload_models
+        preload_models();print('MODEL CACHE PASS');return 0
     if args.command=='login':
         if rest not in ([],['--device-auth']):parser.error('login accepts only --device-auth; API login is disabled')
         return login_chatgpt(rest)

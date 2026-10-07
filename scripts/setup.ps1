@@ -18,6 +18,9 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed; inspect network/proxy and retry.' }
 & $venvPython -B (Join-Path $projectRoot 'project.py') bootstrap
 if ($LASTEXITCODE -ne 0) { throw 'Cache isolation configuration failed.' }
+Write-Host 'Preparing PDF models in the local cache...'
+& $venvPython -B (Join-Path $projectRoot 'project.py') predownload
+if ($LASTEXITCODE -ne 0) { throw 'PDF model download failed; check the network and rerun setup.' }
 & $venvPython -B (Join-Path $projectRoot 'project.py') codex-check
 if ($LASTEXITCODE -ne 0) {
     $npmCommand=Get-Command npm.cmd -ErrorAction SilentlyContinue

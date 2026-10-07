@@ -2,7 +2,8 @@
 
 ## 目录
 
-- `app/runtime.py`：项目路径、环境隔离、CLI 发现与 ChatGPT 模式检查。
+- `app/runtime.py`：项目路径、环境隔离、CLI 发现与 ChatGPT 模式检查；翻译专用 `pdf-https` provider 沿用官方认证，关闭 WebSocket。登录和模型目录查询仍使用内置 `openai`。
+- `app/model_assets.py`：预下载并复用解析模型，按依赖的 SHA3-256 校验；下载源失败时切换，完整校验后原子替换缓存。
 - `app/model_catalog.py`：官方 app-server JSON-RPC 握手、模型分页、目录刷新与缓存。
 - `app/pdf_gui.py`：Tk 界面、后台工作、停止/继续、登录与模型选择。
 - `app/translate_pdf.py`：只读复制输入、行号清理、原生解析排版、交付验证与对照组合。
