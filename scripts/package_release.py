@@ -34,7 +34,7 @@ def source_files():
 def main():
     files=source_files()
     output=ROOT/'outputs/releases';output.mkdir(parents=True,exist_ok=True)
-    archive=output/'pdf2zh-viacodex-0.1.0-source.zip'
+    archive=output/'pdf2zh-viacodex-v1.0-source.zip'
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED) as bundle:
         for path in files:bundle.write(path,Path('pdf2zh-viacodex')/path.relative_to(ROOT))
     with zipfile.ZipFile(archive) as bundle:

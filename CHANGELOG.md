@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0 — 2026-10-08
+
+首个正式版本，面向 Windows 用户。
+
+- 使用自己的 ChatGPT 账号授权，由官方 Codex CLI 翻译，无需配置 API Key。
+- 英文论文翻译为简体中文，支持纯中文、中英对照或同时生成两种 PDF。
+- 图形界面支持官方模型列表、思考强度、指定页码、行号清理和自选保存位置。
+- 支持停止后继续、译文缓存复用、记住上次选择 PDF 的文件夹。
+- 改进连接方式及批量并行翻译，最近一次对比实测速度约为原来的 1.95 倍。
+- 安装时预下载并校验 PDF 解析模型；提供环境检查与源码打包脚本。
+- 源码包不包含账号、论文、缓存或运行环境。
+
 ## 0.1.0 — 2026-10-06
 
 Initial portable Windows source project with official ChatGPT/Codex login, live model catalog, per-model reasoning choices, batched cached translation, optional margin-line cleanup, Chinese/bilingual outputs, stop/resume UI, reproducible dependency setup, tests and source packaging.
