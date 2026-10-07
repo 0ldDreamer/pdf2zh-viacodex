@@ -39,8 +39,9 @@
 ## 文档
 
 - [使用说明与故障排查](docs/usage.md)
-- [实现与开发](docs/development.md)
+- [开发与贡献](docs/development.md)
+- [更新记录](docs/CHANGELOG.md)
 
 ## 开源与致谢
 
-采用 **AGPL-3.0-or-later**，依赖许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。感谢 [pdf2zh-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next)、BabelDOC、PyMuPDF 和 [Codex CLI](https://github.com/openai/codex)。本项目不是 OpenAI 官方产品。
+采用 **AGPL-3.0-or-later**，依赖许可见 [第三方依赖与许可](docs/THIRD_PARTY_NOTICES.md)。感谢 [pdf2zh-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next)、BabelDOC、PyMuPDF 和 [Codex CLI](https://github.com/openai/codex)。本项目不是 OpenAI 官方产品。

@@ -1,6 +1,6 @@
 # Third-party components
 
-The application integrates pdf2zh-next 2.8.2 and BabelDOC 0.5.24, both distributed under AGPL-3.0. This project is distributed under AGPL-3.0-or-later; see LICENSE. Dependency sources, changes and licenses remain available at their upstream projects:
+The application integrates pdf2zh-next 2.8.2 and BabelDOC 0.5.24, both distributed under AGPL-3.0. This project is distributed under AGPL-3.0-or-later; see [LICENSE](../LICENSE). Dependency sources, changes and licenses remain available at their upstream projects:
 
 - pdf2zh-next: https://github.com/PDFMathTranslate-next/PDFMathTranslate-next
 - BabelDOC: https://github.com/funstory-ai/BabelDOC
