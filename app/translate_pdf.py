@@ -171,7 +171,7 @@ def main():
         command+=['--pages',args.pages]
     print('输出目录：'+str(destination),flush=True)
     os.environ['PDF_CODEX_JOB_DIR']=str(destination)
-    print('翻译配置：模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + f'；每批最多 {BATCH_SIZE} 段，最多 {CONCURRENCY} 批并行；连接：{TRANSPORT}。',flush=True)
+    print('翻译配置：模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + f'；每批最多 {BATCH_SIZE} 段，最多 {CONCURRENCY} 批并行。',flush=True)
     from model_assets import preload_models
     print('翻译进度：正在初始化翻译引擎并解析 PDF，请稍候。首次运行可能需要下载版面模型或字体，此阶段可能耗时较长。',flush=True)
     manifest_file=destination/'manifest.json'
