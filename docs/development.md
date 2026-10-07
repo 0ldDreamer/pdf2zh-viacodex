@@ -6,6 +6,8 @@
 - `app/model_catalog.py`：官方 app-server JSON-RPC 握手、模型分页、目录刷新与缓存。
 - `app/pdf_gui.py`：Tk 界面、后台工作、停止/继续、登录与模型选择。
 - `app/translate_pdf.py`：只读复制输入、行号清理、原生解析排版、交付验证与对照组合。
+- `app/translation_instructions.md`：翻译调用专用指令，替换通用编程指令；仅翻译子进程关闭应用、插件和 shell 工具。
+- `app/translation_settings.py`：共享调度参数；每批最多 12 段、最多 8 批并行，128 个段落线程为批次提供输入。
 - `app/batch_translate.py`：按段落 ID 返回 JSON，批量并行、占位符校验、缓存、进度和失败标记。
 - `app/vendor_isolation.py`：对专用虚拟环境三个缓存/配置路径进行可重复适配；不修改系统 Python。
 - `.runtime/`：所有运行状态，包括账号、模型、字体、临时 PDF、日志和缓存，禁止提交。

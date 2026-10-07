@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -90,12 +91,49 @@ class CoreTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):validate_results(src,bad)
         self.assertNotEqual(cache_key('same',{'model':'m','effort':'low'}),cache_key('same',{'model':'m','effort':'high'}))
 
+    def test_batch_producers_supply_eight_full_batches(self):
+        from translation_settings import BATCH_SIZE, CONCURRENCY, PARAGRAPH_WORKERS
+        profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
+        all_running=threading.Event()
+        release=threading.Event()
+        lock=threading.Lock()
+        active=peak=0
+        def runner(sources,identifier):
+            nonlocal active,peak
+            with lock:
+                active+=1
+                peak=max(peak,active)
+                if active==CONCURRENCY:all_running.set()
+            if not release.wait(10):raise RuntimeError('producer queue stalled')
+            with lock:active-=1
+            return {key:'译文 '+value for key,value in sources.items()},{}
+        texts=[f'unique paragraph {i} {{v1}}' for i in range(BATCH_SIZE*CONCURRENCY)]
+        with patch('batch_translate.translation_codex',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
+            manager=BatchManager(job_dir=self.root/'parallel',runner=runner,cache_path=self.root/'parallel.db')
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=PARAGRAPH_WORKERS) as producers:
+                    futures=[producers.submit(manager.translate,text) for text in texts]
+                    try:
+                        self.assertTrue(all_running.wait(10),'paragraph producers could not fill all batch consumers')
+                        self.assertEqual(peak,CONCURRENCY)
+                        self.assertEqual(manager.stats['active_batches'],CONCURRENCY)
+                    finally:release.set()
+                    results=[future.result(timeout=10) for future in futures]
+                self.assertEqual(results,['译文 '+text for text in texts])
+                self.assertEqual(manager.stats['translated'],len(texts))
+                self.assertEqual(manager.stats['failed_batches'],0)
+                self.assertEqual(manager.translate(texts[0]),results[0])
+                self.assertEqual(manager.stats['cache_hits'],1)
+            finally:
+                release.set()
+                manager.pool.shutdown(wait=True)
+
     def test_batch_deduplication_cache_and_failure_guard(self):
         profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
         calls=[]
         def runner(sources,identifier):
             calls.append(sources);return {key:'译文 '+value for key,value in sources.items()},{}
-        with patch('batch_translate.ensure_chatgpt_auth',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
+        with patch('batch_translate.translation_codex',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
             manager=BatchManager(job_dir=self.root/'job',runner=runner,cache_path=self.root/'cache.db')
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
                 results=list(pool.map(manager.translate,['sample {v1}']*8))

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from translation_settings import PARAGRAPH_WORKERS, PARAGRAPH_QPS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CODE_ROOT = PROJECT_ROOT / 'app'
@@ -87,10 +88,20 @@ def ensure_chatgpt_auth(sync=False):
     return command
 
 
+def translation_codex():
+    # Translation needs neither the coding-agent instructions nor its tool catalog.
+    # Apply this to translation subprocesses only; login and model/list stay unchanged.
+    return ensure_chatgpt_auth() + [
+        '-c','model_instructions_file='+json.dumps(str(CODE_ROOT/'translation_instructions.md')),
+        '-c','features.apps=false', '-c','features.plugins=false',
+        '-c','features.shell_tool=false',
+    ]
+
+
 def write_pdf_config():
     _,profile_id=translation_profile()
     command='"'+Path(sys.executable).as_posix()+'" "'+(CODE_ROOT/'codex_translate.py').as_posix()+'" --cache-profile '+profile_id
-    text='clitranslator = true\n[translation]\nlang_in = "en"\nlang_out = "zh"\nqps = 64\npool_max_workers = 64\nno_auto_extract_glossary = true\n[pdf]\nno_dual = true\nonly_include_translated_page = true\nwatermark_output_mode = "no_watermark"\n[clitranslator_detail]\nclitranslator_timeout = 300\nclitranslator_command = '+json.dumps(command)+'\n'
+    text=f'clitranslator = true\n[translation]\nlang_in = "en"\nlang_out = "zh"\nqps = {PARAGRAPH_QPS}\npool_max_workers = {PARAGRAPH_WORKERS}\nno_auto_extract_glossary = true\n[pdf]\nno_dual = true\nonly_include_translated_page = true\nwatermark_output_mode = "no_watermark"\n[clitranslator_detail]\nclitranslator_timeout = 300\nclitranslator_command = '+json.dumps(command)+'\n'
     path=ROOT/'config/pdf2zh-codex.toml';path.write_text(text,encoding='utf-8')
     return path
 

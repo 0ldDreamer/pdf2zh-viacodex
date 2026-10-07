@@ -10,7 +10,7 @@ import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
 FILES=['README.md','LICENSE','THIRD_PARTY_NOTICES.md','CHANGELOG.md','CONTRIBUTING.md','.gitignore','.gitattributes','requirements.txt','project.py',
-       '安装依赖.cmd','登录ChatGPT.cmd','翻译PDF.cmd','检查环境.cmd']
+       '安装依赖.cmd','登录ChatGPT.cmd','翻译PDF.cmd','检查环境.cmd','app/translation_instructions.md']
 PATTERNS=['app/*.py','scripts/*.py','scripts/*.ps1','tests/*.py','docs/*.md','docs/images/*.png','.github/workflows/*.yml']
 
 

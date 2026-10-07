@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import time
+from translation_settings import BATCH_SIZE, CONCURRENCY, PARAGRAPH_WORKERS, PARAGRAPH_QPS
 from runtime import ROOT, CODE_ROOT, OUTPUT_ROOT, write_pdf_config, prepare_environment, ensure_chatgpt_auth, translation_profile
 
 
@@ -148,7 +149,7 @@ def main():
     destination.mkdir(parents=True)
     log=destination/'translation.log'
     manifest={'input':str(source),'input_sha256':original_hash,'pages':args.pages or 'all',
-              'engine':'pdf2zh-next 2.8.2 -> batched Codex exec', 'batch_size':12, 'batch_concurrency':4,
+              'engine':'pdf2zh-next 2.8.2 -> batched Codex exec', 'batch_size':BATCH_SIZE, 'batch_concurrency':CONCURRENCY, 'paragraph_workers':PARAGRAPH_WORKERS,
               'auth':'ChatGPT subscription only','api_fallback':False,'model':profile['model'],'model_reasoning_effort':profile['model_reasoning_effort'],'output_directory':str(output_base),'status':'running','output_mode':args.output_mode,'source_page_indices':[i+1 for i in indices]}
     work=ROOT/'tmp'/stamp
     work.mkdir()
@@ -165,12 +166,12 @@ def main():
     command=[sys.executable,str(CODE_ROOT/'pdf2zh_entry.py'),'--config-file',str(write_pdf_config()),
              '--clitranslator','--clitranslator-command', '"'+Path(sys.executable).as_posix()+'" "'+(CODE_ROOT/'codex_translate.py').as_posix()+'"'+' --cache-profile '+profile_id, '--clitranslator-timeout','300','--output',str(rendered),'--lang-in','en','--lang-out','zh',
              '--no-dual','--only-include-translated-page','--watermark-output-mode','no_watermark',
-             '--qps','64','--pool-max-workers','64','--no-auto-extract-glossary',str(input_copy)]
+             '--qps',str(PARAGRAPH_QPS),'--pool-max-workers',str(PARAGRAPH_WORKERS),'--no-auto-extract-glossary',str(input_copy)]
     if args.pages:
         command+=['--pages',args.pages]
     print('输出目录：'+str(destination),flush=True)
     os.environ['PDF_CODEX_JOB_DIR']=str(destination)
-    print('翻译配置：模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + '；每批最多 12 段，最多 4 批并行。',flush=True)
+    print('翻译配置：模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + f'；每批最多 {BATCH_SIZE} 段，最多 {CONCURRENCY} 批并行。',flush=True)
     print('翻译进度：正在初始化翻译引擎并解析 PDF，请稍候。首次运行可能需要下载版面模型或字体，此阶段可能耗时较长。',flush=True)
     manifest_file=destination/'manifest.json'
     manifest_file.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
