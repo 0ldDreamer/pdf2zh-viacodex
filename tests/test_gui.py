@@ -12,6 +12,15 @@ prepare_environment()
 
 @unittest.skipUnless(os.name=='nt' or os.environ.get('DISPLAY'),'GUI requires a desktop session')
 class GuiTests(unittest.TestCase):
+    def setUp(self):
+        self.settings_temp=tempfile.TemporaryDirectory(dir=ROOT/'tmp')
+        self.settings_patch=patch('pdf_gui.SETTINGS',Path(self.settings_temp.name)/'gui-settings.json')
+        self.settings_patch.start()
+
+    def tearDown(self):
+        self.settings_patch.stop()
+        self.settings_temp.cleanup()
+
     def test_stop_resume_and_dynamic_efforts(self):
         import tkinter as tk
         import fitz
@@ -183,3 +192,37 @@ class GuiTests(unittest.TestCase):
                 app.chinese_check.invoke()
                 self.assertEqual(app.output_chinese.get(),previous)
             finally:w.destroy()
+
+    def test_pdf_picker_remembers_folder_after_restart_and_ignores_cancel(self):
+        import json
+        import tkinter as tk
+        import fitz
+        from pdf_gui import TranslationWindow,PROJECT_ROOT
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
+            state=Path(folder)
+            papers=state/'中文 论文';papers.mkdir()
+            source=papers/'paper.pdf'
+            with fitz.open() as doc:
+                doc.new_page();doc.save(source)
+            settings=state/'settings.json'
+            with patch('pdf_gui.SETTINGS',settings):
+                w=tk.Tk();app=TranslationWindow(w,refresh_catalog=False)
+                try:
+                    app.remember.set(False)
+                    with patch('pdf_gui.filedialog.askopenfilename',return_value=str(source)) as choose:
+                        app.browse()
+                    self.assertEqual(choose.call_args.kwargs['initialdir'],str(PROJECT_ROOT))
+                    self.assertEqual(json.loads(settings.read_text(encoding='utf-8')),{'last_pdf_directory':str(papers.resolve())})
+                finally:w.destroy()
+                w=tk.Tk();app=TranslationWindow(w,refresh_catalog=False)
+                try:
+                    before=settings.read_bytes()
+                    with patch('pdf_gui.filedialog.askopenfilename',return_value='') as choose:
+                        app.browse()
+                    self.assertEqual(choose.call_args.kwargs['initialdir'],str(papers.resolve()))
+                    self.assertEqual(settings.read_bytes(),before)
+                    source.unlink();papers.rmdir()
+                    with patch('pdf_gui.filedialog.askopenfilename',return_value='') as choose:
+                        app.browse()
+                    self.assertEqual(choose.call_args.kwargs['initialdir'],str(PROJECT_ROOT))
+                finally:w.destroy()

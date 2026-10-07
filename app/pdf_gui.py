@@ -161,6 +161,7 @@ class TranslationWindow:
             preferences = json.loads(SETTINGS.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             pass
+        self.last_pdf_directory = preferences.get('last_pdf_directory', '')
         self.pdf = tk.StringVar(value=initial_pdf)
         self.output_directory = tk.StringVar(value=initial_output or preferences.get('output_directory', str(OUTPUT_ROOT)))
         self.only_pages = tk.BooleanVar(value=bool(initial_pages) or preferences.get('only_pages', False))
@@ -538,10 +539,19 @@ class TranslationWindow:
             self.details.set('无法读取这个 PDF，请检查文件。')
 
     def browse(self):
-        chosen = filedialog.askopenfilename(parent=self.window, title='选择英文论文 PDF', initialdir=str(PROJECT_ROOT), filetypes=[('PDF 文件', '*.pdf')])
+        initial = Path(self.last_pdf_directory) if self.last_pdf_directory else None
+        if initial is None or not initial.is_dir():
+            current = Path(self.pdf.get().strip().strip('"'))
+            initial = current.parent if current.is_file() else PROJECT_ROOT
+        chosen = filedialog.askopenfilename(parent=self.window, title='选择英文论文 PDF', initialdir=str(initial), filetypes=[('PDF 文件', '*.pdf')])
         if chosen:
             self.pdf.set(chosen)
+            self.last_pdf_directory = str(Path(chosen).resolve().parent)
             self.inspect_file()
+            try:
+                self.save_settings()
+            except OSError as exc:
+                self.note('无法保存上次选择的文件夹：' + str(exc))
 
     def browse_output(self):
         initial = Path(self.output_directory.get())
@@ -557,10 +567,14 @@ class TranslationWindow:
             self.output_directory.set(str(directory))
 
     def save_settings(self):
+        # File-dialog history is independent of remembering translation options.
+        preferences = {'last_pdf_directory': self.last_pdf_directory} if self.last_pdf_directory else {}
         if self.remember.get():
+            preferences.update({'only_pages':self.only_pages.get(), 'pages':self.pages.get(), 'remove_numbers':self.remove_numbers.get(), 'open_finished':self.open_finished.get(), 'remember':True, 'output_directory':self.output_directory.get(), 'output_chinese':self.output_chinese.get(), 'output_bilingual':self.output_bilingual.get()})
+        if preferences:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
             temporary = SETTINGS.with_suffix('.tmp')
-            temporary.write_text(json.dumps({'only_pages':self.only_pages.get(), 'pages':self.pages.get(), 'remove_numbers':self.remove_numbers.get(), 'open_finished':self.open_finished.get(), 'remember':True, 'output_directory':self.output_directory.get(), 'output_chinese':self.output_chinese.get(), 'output_bilingual':self.output_bilingual.get()}, ensure_ascii=False, indent=2), encoding='utf-8')
+            temporary.write_text(json.dumps(preferences, ensure_ascii=False, indent=2), encoding='utf-8')
             temporary.replace(SETTINGS)
         else:
             SETTINGS.unlink(missing_ok=True)
@@ -621,7 +635,6 @@ class TranslationWindow:
         self.note(('继续翻译：' if resume else '开始翻译：') + Path(command[2]).name)
         if resume:
             self.note('继续处理任务；仅复用同模型、同强度的缓存，PDF 解析与排版会重新执行。')
-        self.note('模型：' + self.model.get() + '；思考强度：' + self.reasoning_effort.get())
         self.note('生成：' + '、'.join(name for enabled, name in [(self.output_chinese.get(), '纯中文 PDF'), (self.output_bilingual.get(), '中英对照 PDF（中文左 / 原文右）')] if enabled))
         self.note('范围：' + (self.pages.get() if self.only_pages.get() else '全文') + '；行号清理：' + ('启用' if self.remove_numbers.get() else '关闭'))
         threading.Thread(target=self.run_worker, args=(command,), daemon=True).start()

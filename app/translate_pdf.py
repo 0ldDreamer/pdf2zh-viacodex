@@ -168,10 +168,10 @@ def main():
              '--qps','64','--pool-max-workers','64','--no-auto-extract-glossary',str(input_copy)]
     if args.pages:
         command+=['--pages',args.pages]
-    print('已确认使用 ChatGPT 登录。开始 PDF 解析、翻译和排版。',flush=True)
     print('输出目录：'+str(destination),flush=True)
     os.environ['PDF_CODEX_JOB_DIR']=str(destination)
-    print('调用优化：每批最多 12 段，最多 4 批并行；模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + '。',flush=True)
+    print('翻译配置：模型：' + profile['model'] + '；思考强度：' + profile['model_reasoning_effort'] + '；每批最多 12 段，最多 4 批并行。',flush=True)
+    print('翻译进度：正在初始化翻译引擎并解析 PDF，请稍候。首次运行可能需要下载版面模型或字体，此阶段可能耗时较长。',flush=True)
     manifest_file=destination/'manifest.json'
     manifest_file.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     try:
