@@ -21,3 +21,15 @@ GUI layout tests now explicitly set allowable window sizes instead of inheriting
 Keep only the four Chinese-named CMD launchers; each directly invokes its installer, GUI or command runner. Documentation, packaging and Windows launcher checks use the same entrypoints.
 
 Python discovery now tolerates missing launcher versions on Windows PowerShell 5.1, falls back to other supported runtimes, and reports a clear installation hint if none is available. Real shell regression checks cover missing 3.12, PATH fallback and explicit invalid runtimes.
+
+Apply the selected light card interface: teal accents, grouped file/settings sections, header login controls and a resizable log panel. Existing translation, model discovery and login/resume behavior are preserved.
+
+Align the light UI with its preview: show the locally stored ChatGPT login status, draw checkmark indicators instead of platform crosses, and restore borders on secondary buttons. Cancelled authorization retains the original account badge.
+
+The header login button shows Switch account when a ChatGPT session is saved, Sign in when signed out, and Cancel login during authorization.
+
+Localize common Codex browser-login messages in the GUI log and the shared login launcher failure hint. Authorization URLs, device-login commands and unknown diagnostics are preserved.
+
+Theme model and reasoning dropdowns with matching fonts, comfortable row spacing, light teal selection and consistent borders/hover colors.
+
+Progress logs show paragraph counting in progress while totals are unavailable instead of 0/0, and suppress duplicate preparation notices. Counted paragraph progress and cache/batch statistics remain visible afterwards.

@@ -126,7 +126,14 @@ class LoginTests(unittest.TestCase):
         process.wait.return_value=0
         process.stdout.__enter__=Mock(return_value=process.stdout)
         process.stdout.__exit__=Mock(return_value=False)
-        process.stdout.__iter__=Mock(return_value=iter(["LOGIN_OUTPUT\n"]))
+        process.stdout.__iter__=Mock(return_value=iter([
+            "LOGIN_OUTPUT\n",
+            "Starting local login server on http://localhost:1455.\n",
+            "If your browser did not open, navigate to this URL to authenticate:\n",
+            "https://auth.openai.com/unit-test?state=test-only&code_challenge=keep-exact\n",
+            "On a remote or headless machine? Use `codex login --device-auth` instead.\n",
+            "Operation failed. Read the message above.\n",
+            "未知错误保留原文\n"]))
         with patch('pdf_gui.subprocess.Popen',return_value=process) as launch, \
              patch('pdf_gui.threading.Thread') as thread:
             thread.side_effect=lambda **kw:SimpleNamespace(start=kw['target'])
@@ -142,6 +149,16 @@ class LoginTests(unittest.TestCase):
         self.assertEqual(options['stdin'],subprocess.DEVNULL)
         self.assertEqual(options['stdout'],subprocess.PIPE)
         self.assertEqual(window.events.get_nowait(),('line','LOGIN_OUTPUT'))
+        expected = [
+            '正在启动本机登录回调服务：http://localhost:1455.',
+            '如果浏览器未自动打开，请访问下面的链接完成登录授权：',
+            'https://auth.openai.com/unit-test?state=test-only&code_challenge=keep-exact',
+            '在远程或无图形界面的电脑上，可改用设备码登录：codex login --device-auth。',
+            '本次操作未完成，请查看上方提示。',
+            '未知错误保留原文',
+        ]
+        for line in expected:
+            self.assertEqual(window.events.get_nowait(),('line',line))
         self.assertEqual(window.events.get_nowait(),('login_done',0))
         self.assertIsNone(window.login_process)
 

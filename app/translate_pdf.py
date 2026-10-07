@@ -183,9 +183,13 @@ def main():
                 try:
                     progress=json.loads(progress_file.read_text(encoding='utf-8'))
                     summary=(progress['translated'],progress['cache_hits'],progress['active_batches'],progress.get('processed_paragraphs',0),progress.get('total_paragraphs',0))
-                    if summary!=last_progress:
-                        print(f"翻译进度：段落处理 {summary[3]}/{summary[4]}，新增译文 {summary[0]} 段，缓存 {summary[1]} 段，并行 {summary[2]} 批。",flush=True)
-                        last_progress=summary
+                    if summary[4] > 0:
+                        message=f"翻译进度：段落处理 {summary[3]}/{summary[4]}，新增译文 {summary[0]} 段，缓存 {summary[1]} 段，并行 {summary[2]} 批。"
+                    else:
+                        message="翻译进度：正在准备翻译，统计段落中……"
+                    if message!=last_progress:
+                        print(message,flush=True)
+                        last_progress=message
                 except (OSError,ValueError,KeyError): pass
                 time.sleep(1)
             result.wait()

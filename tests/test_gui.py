@@ -57,6 +57,12 @@ class GuiTests(unittest.TestCase):
                     w.geometry(f'{width}x{height}');w.update()
                     self.assertEqual(w.winfo_height(),height)
                     self.assertGreaterEqual(app.activity.winfo_height(),180)
+                    for control in app.controls + [app.model_box,app.effort_box,app.login_button,app.start_button,app.stop_button]:
+                        self.assertTrue(control.winfo_ismapped())
+                        right=control.winfo_rootx()-w.winfo_rootx()+control.winfo_width()
+                        self.assertLessEqual(right,width)
+                        bottom=control.winfo_rooty()-w.winfo_rooty()+control.winfo_height()
+                        self.assertLessEqual(bottom,height)
             finally:w.destroy()
 
     def test_login_blocks_translation_until_authorization_completes(self):
@@ -106,7 +112,7 @@ class GuiTests(unittest.TestCase):
                 self.assertTrue(app.login_cancel_requested.is_set())
                 app.events.put(('login_done',130));app.poll()
                 self.assertFalse(app.login_in_progress)
-                self.assertEqual(app.login_button.cget('text'),'登录 ChatGPT')
+                self.assertEqual(app.login_button.cget('text'),'切换账号' if app.logged_in else '登录 ChatGPT')
                 self.assertIn('已取消',app.status.get())
                 for button in (app.refresh_models_button,app.start_button,app.stop_button):
                     self.assertEqual(str(button.cget('state')),'normal')
@@ -141,3 +147,39 @@ class GuiTests(unittest.TestCase):
             self.assertTrue(app.options_box.winfo_ismapped())
             self.assertEqual(app.activity.winfo_height(),initial)
         finally:w.destroy()
+
+    def test_account_badge_tracks_saved_login_and_keeps_old_account_on_cancel(self):
+        import json
+        import tkinter as tk
+        from pdf_gui import TranslationWindow,has_chatgpt_session
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder, patch('pdf_gui.CODEX_HOME',Path(folder)):
+            auth=Path(folder)/'auth.json'
+            self.assertFalse(has_chatgpt_session())
+            w=tk.Tk();app=TranslationWindow(w,refresh_catalog=False)
+            try:
+                self.assertEqual(app.account_status.get(),'○ 未登录')
+                self.assertEqual(app.login_button.cget('text'),'登录 ChatGPT')
+                for invalid in ['broken json','[]',json.dumps({'auth_mode':'apikey'}),json.dumps({'auth_mode':'chatgpt','tokens':{}})]:
+                    auth.write_text(invalid)
+                    self.assertFalse(has_chatgpt_session())
+                fixture={'auth_mode':'chatgpt','tokens':{'access_token':'unit-test-not-a-real-token'}}
+                auth.write_text(json.dumps(fixture))
+                app.refresh_models=Mock()
+                app.events.put(('login_done',0));app.poll()
+                self.assertEqual(app.account_status.get(),'● 已登录')
+                self.assertEqual(app.login_button.cget('text'),'切换账号')
+                before=auth.read_bytes()
+                for code in [130,124,1]:
+                    app.login_in_progress=True
+                    app.sync_model_controls()
+                    self.assertEqual(app.login_button.cget('text'),'取消登录')
+                    app.events.put(('login_done',code));app.poll()
+                    self.assertEqual(app.account_status.get(),'● 已登录')
+                    self.assertEqual(app.login_button.cget('text'),'切换账号')
+                    self.assertEqual(auth.read_bytes(),before)
+                previous=app.output_chinese.get()
+                app.chinese_check.invoke()
+                self.assertEqual(app.output_chinese.get(),not previous)
+                app.chinese_check.invoke()
+                self.assertEqual(app.output_chinese.get(),previous)
+            finally:w.destroy()
