@@ -137,7 +137,7 @@ def main():
         if not args.reasoning_effort and effort not in row['efforts']:effort=row['default_effort'] or row['efforts'][0]
         save_translation_selection(name,effort,models)
         profile,profile_id=translation_profile()
-    model_filename=re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', profile['model']).rstrip(' .')
+    translation_filename=re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', profile['model'] + '-' + profile['model_reasoning_effort']).rstrip(' .')
     os.environ['PDF2ZH_JOB_PROFILE']=json.dumps(profile)
     codex=ensure_chatgpt_auth()
     original_hash=sha256(source)
@@ -223,11 +223,11 @@ def main():
             raise RuntimeError('译文页数与所选原文页数不一致，已停止交付。')
         outputs = []
         if args.output_mode in ('chinese', 'both'):
-            final = destination / f"{source.stem}_中文_{model_filename}.pdf"
+            final = destination / f"{source.stem}_中文_{translation_filename}.pdf"
             shutil.copy2(translated, final)
             outputs.append({'mode':'chinese', 'path':str(final), 'sha256':sha256(final), 'pages':len(indices)})
         if args.output_mode in ('bilingual', 'both'):
-            final = destination / f"{source.stem}_中英对照_{model_filename}.pdf"
+            final = destination / f"{source.stem}_中英对照_{translation_filename}.pdf"
             compose_compare(translated, source, indices, final)
             outputs.append({'mode':'bilingual', 'path':str(final), 'sha256':sha256(final), 'pages':len(indices), 'left':'zh', 'right':'original'})
         if sha256(source) != original_hash:

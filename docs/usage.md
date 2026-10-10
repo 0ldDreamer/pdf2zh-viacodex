@@ -120,11 +120,11 @@
 
 ## 7. 查找生成结果
 
-结果文件名会附加本次使用的模型名称，例如：
+结果文件名会附加本次使用的模型名称和思考强度，格式为“原文件名_版本_模型-强度.pdf”。例如，使用 gpt-6.1-sol、xhigh：
 
 ```text
-paper_中文_gpt-6.1-sol.pdf
-paper_中英对照_gpt-6.1-sol.pdf
+paper_中文_gpt-6.1-sol-xhigh.pdf
+paper_中英对照_gpt-6.1-sol-xhigh.pdf
 ```
 
 任务文件夹中还会保留日志与任务记录。遇到失败时，可以查看 `translation.log`；需要核对任务状态、模型和结果路径时，可以查看 `manifest.json`。其中 `status` 为 `completed` 才表示任务完成。

@@ -218,7 +218,7 @@ class TranslationWindow:
         style.map('Primary.TButton', background=[('disabled', '#b7cdd1'), ('active', '#066c78')], foreground=[('disabled', 'white'), ('!disabled', 'white')])
         style.configure('TEntry', padding=6, fieldbackground='#f8fafc', bordercolor='#dfe7ef', lightcolor='#dfe7ef', darkcolor='#dfe7ef')
         style.configure('TCombobox', padding=6, fieldbackground='#f8fafc', background='#f8fafc', bordercolor='#dfe7ef', lightcolor='#dfe7ef', darkcolor='#dfe7ef', arrowcolor='#087f8c', arrowsize=14)
-        style.map('TCombobox', fieldbackground=[('disabled', '#edf1f5'), ('readonly', '#f8fafc')], foreground=[('disabled', '#9ba8b7'), ('readonly', '#162b3d')], background=[('disabled', '#edf1f5'), ('active', '#e8f5f4'), ('readonly', '#f8fafc')], bordercolor=[('focus', '#087f8c'), ('active', '#087f8c')])
+        style.map('TCombobox', fieldbackground=[('disabled', '#edf1f5'), ('readonly', '#f8fafc')], foreground=[('disabled', '#9ba8b7'), ('readonly', '#162b3d')], background=[('disabled', '#edf1f5'), ('active', '#e8f5f4'), ('readonly', '#f8fafc')], bordercolor=[('focus', '#dfe7ef'), ('active', '#087f8c')], selectbackground=[('readonly', '#f8fafc')], selectforeground=[('readonly', '#162b3d')])
         self.checkbox_images = checkbox_images(w)
         unchecked, checked, disabled, disabled_checked = self.checkbox_images
         style.element_create('Paper.Check.indicator', 'image', unchecked,
@@ -295,6 +295,11 @@ class TranslationWindow:
         self.effort_box = ttk.Combobox(model_row, textvariable=self.reasoning_effort, state='readonly', width=9)
         self.effort_box.grid(row=1, column=1, sticky='ew', padx=(0, 18))
         for combo in (self.model_box, self.effort_box):
+            combo.configure(exportselection=False)
+            # Tk selects the entry text after choosing a row or gaining focus.
+            # Clear it after class bindings run, without moving keyboard focus.
+            for event in ('<<ComboboxSelected>>', '<FocusIn>', '<FocusOut>'):
+                combo.bind(event, lambda event, box=combo: box.after_idle(box.selection_clear), add='+')
             self.style_dropdown(combo)
         self.refresh_models_button = ttk.Button(model_row, text='刷新模型', command=self.refresh_models)
         self.refresh_models_button.grid(row=1, column=2)
