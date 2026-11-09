@@ -726,7 +726,7 @@ class TranslationWindow:
             self.note('任务已停止，已完成译文缓存保留。点击“继续”处理剩余段落。')
         else:
             self.status.set('翻译未完成')
-            self.note('请点击“查看本次日志”检查原因；未切换到付费 API。')
+            self.note('翻译未完成，具体原因见翻译日志，可将日志发给 Codex 进行处理。')
         if self.close_when_done:
             self.window.destroy()
 

@@ -128,6 +128,55 @@ class CoreTests(unittest.TestCase):
                 release.set()
                 manager.pool.shutdown(wait=True)
 
+    def test_validation_retries_only_invalid_paragraph_and_keeps_cache(self):
+        profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
+        calls=[]
+        def runner(sources, identifier):
+            calls.append(dict(sources))
+            result={key:'译文 '+value for key,value in sources.items()}
+            if len(calls)==1:result['p1']='漏掉公式'
+            return result, {}
+        with patch('batch_translate.translation_codex',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
+            m=BatchManager(job_dir=self.root/'retry',runner=runner,cache_path=self.root/'retry.db')
+            try:
+                sources={'p0':'Good {v1}', 'p1':'Bad {v2} {v3}'}
+                result,_=m.validated_batch(sources,'unit-batch')
+                self.assertEqual(result['p1'],'译文 Bad {v2} {v3}')
+                self.assertEqual(calls,[sources,{'p1':sources['p1']}])
+                self.assertEqual(m.stats['validation_retries'],1)
+                self.assertEqual(m.translate(sources['p0']),result['p0'])
+                self.assertEqual(m.translate(sources['p1']),result['p1'])
+                self.assertEqual(len(calls),2)
+            finally:m.pool.shutdown(wait=True)
+
+    def test_persistent_validation_failure_keeps_valid_peers_and_blocks_delivery(self):
+        profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
+        calls=[]
+        def runner(sources, identifier):
+            calls.append(dict(sources))
+            return {key:('译文 '+value if key=='p0' else '损坏') for key,value in sources.items()},{}
+        with patch('batch_translate.translation_codex',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
+            m=BatchManager(job_dir=self.root/'permanent',runner=runner,cache_path=self.root/'permanent.db')
+            try:
+                with self.assertRaisesRegex(RuntimeError,'重试两次'):
+                    m.validated_batch({'p0':'Valid {v1}','p1':'Invalid {v2}'},'unit')
+                self.assertEqual(len(calls),3)
+                self.assertEqual(m.translate('Valid {v1}'),'译文 Valid {v1}')
+                with m.connect() as db:
+                    self.assertEqual(db.execute('SELECT count(*) FROM translations').fetchone()[0],1)
+            finally:m.pool.shutdown(wait=True)
+
+    def test_transport_error_is_not_retried_as_bad_translation(self):
+        profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
+        with patch('batch_translate.translation_codex',return_value=['unit-codex']),patch('batch_translate.translation_profile',return_value=(profile,'unit')):
+            from unittest.mock import Mock
+            runner=Mock(side_effect=RuntimeError('login failed'))
+            m=BatchManager(job_dir=self.root/'transport',runner=runner,cache_path=self.root/'transport.db')
+            try:
+                with self.assertRaisesRegex(RuntimeError,'login failed'):m.validated_batch({'p0':'Text'},'unit')
+                self.assertEqual(runner.call_count,1)
+            finally:m.pool.shutdown(wait=True)
+
     def test_batch_deduplication_cache_and_failure_guard(self):
         profile={'model':'unit-model','model_reasoning_effort':'low','model_provider':'openai'}
         calls=[]

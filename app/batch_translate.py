@@ -52,7 +52,7 @@ class BatchManager:
         self.pool = cf.ThreadPoolExecutor(max_workers=CONCURRENCY, thread_name_prefix='codex-batch')
         self.runner = runner or self.run_codex
         self.failure = None
-        self.stats = {'batch_size':BATCH_SIZE, 'concurrency':CONCURRENCY, 'model':self.profile['model'], 'reasoning_effort':self.profile['model_reasoning_effort'], 'total_paragraphs':0, 'processed_paragraphs':0, 'submitted':0, 'cache_hits':0, 'translated':0, 'failed_batches':0, 'batches_started':0, 'batches_completed':0, 'active_batches':0, 'calls':[], 'started_at':datetime.datetime.now().isoformat()}
+        self.stats = {'batch_size':BATCH_SIZE, 'concurrency':CONCURRENCY, 'model':self.profile['model'], 'reasoning_effort':self.profile['model_reasoning_effort'], 'total_paragraphs':0, 'processed_paragraphs':0, 'submitted':0, 'cache_hits':0, 'translated':0, 'failed_batches':0, 'validation_retries':0, 'batches_started':0, 'batches_completed':0, 'active_batches':0, 'calls':[], 'started_at':datetime.datetime.now().isoformat()}
         threading.Thread(target=self.dispatch, daemon=True, name='batch-dispatch').start()
 
     @contextmanager
@@ -139,6 +139,42 @@ class BatchManager:
                     continue
             self.pool.submit(self.execute, batch)
 
+    def validated_batch(self, sources, identifier):
+        """Keep valid peers; retry only malformed paragraphs, never repair formulas."""
+        result, details = self.runner(sources, identifier)
+        valid = {}
+
+        def collect(requested, returned):
+            # Missing/extra IDs are validation failures too; transport errors propagate.
+            for key, source in requested.items():
+                candidate = {key: returned[key]} if isinstance(returned, dict) and key in returned else {}
+                try:
+                    value = validate_results({key: source}, candidate)[key]
+                except RuntimeError:
+                    continue
+                valid[key] = value
+                with self.connect() as db:
+                    db.execute('INSERT OR REPLACE INTO translations VALUES (?, ?)',
+                               (cache_key(source, self.profile), value))
+
+        collect(sources, result)
+        for key, source in sources.items():
+            for attempt in range(1, 3):
+                if key in valid:
+                    break
+                with self.lock:
+                    self.stats['validation_retries'] += 1
+                    self.record('paragraph_validation_retry', batch_id=identifier,
+                                paragraph=key, attempt=attempt)
+                retry, retry_details = self.runner({key: source},
+                    identifier + '-retry-' + key + '-' + str(attempt))
+                collect({key: source}, retry)
+                with self.lock:
+                    self.stats['calls'].append(dict(paragraphs=1, retry=True, **retry_details))
+            if key not in valid:
+                raise RuntimeError('段落 ' + key + ' 重试两次后仍未通过公式或译文完整性校验。')
+        return validate_results(sources, valid), details
+
     def execute(self, batch):
         started = time.monotonic()
         identifier = uuid.uuid4().hex
@@ -152,8 +188,7 @@ class BatchManager:
             self.record('batch_started', batch_id=identifier, paragraphs=len(batch))
         try:
             sources = {'p'+str(i): source for i, (_, source, _) in enumerate(batch)}
-            result, details = self.runner(sources, identifier)
-            result = validate_results(sources, result)
+            result, details = self.validated_batch(sources, identifier)
             with self.connect() as db:
                 db.executemany('INSERT OR REPLACE INTO translations VALUES (?, ?)', [(key, result['p'+str(i)]) for i, (key, _, _) in enumerate(batch)])
             with self.lock:
@@ -183,8 +218,12 @@ class BatchManager:
         schema = {'type':'object', 'properties':{key:{'type':'string'} for key in sources}, 'required':list(sources), 'additionalProperties':False}
         schema_file = folder / 'schema.json'
         schema_file.write_text(json.dumps(schema), encoding='utf-8')
+        (folder / 'source.json').write_text(json.dumps(sources, ensure_ascii=False, indent=2), encoding='utf-8')
+        prompt = BATCH_PROMPT
+        if '-retry-' in identifier:
+            prompt += '\nVALIDATION RETRY: A previous translation failed validation. Copy EVERY formula/style placeholder verbatim, with exactly the same occurrence counts in each paragraph. Do not merge, drop or invent placeholders. Check all markers against the source before returning JSON. Required marker counts: ' + json.dumps({key: dict(markers(value)) for key, value in sources.items()}, ensure_ascii=False)
         output = folder / 'result.json'
-        args = self.codex + ['exec','--ephemeral','--skip-git-repo-check','--sandbox','read-only','--color','never','--json','--output-schema',str(schema_file),'-C',str(ROOT),'-o',str(output),BATCH_PROMPT]
+        args = self.codex + ['exec','--ephemeral','--skip-git-repo-check','--sandbox','read-only','--color','never','--json','--output-schema',str(schema_file),'-C',str(ROOT),'-o',str(output),prompt]
         events = []
         started = time.monotonic()
         with (folder / 'stderr.log').open('wb') as diagnostics:
