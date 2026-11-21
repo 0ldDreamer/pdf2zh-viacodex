@@ -15,6 +15,8 @@ CODE_ROOT = PROJECT_ROOT / 'app'
 ROOT = Path(os.environ.get('PDF2ZH_VIACODEX_STATE_DIR', str(PROJECT_ROOT / '.runtime'))).expanduser().resolve()
 OUTPUT_ROOT = PROJECT_ROOT / 'outputs'
 CODEX_HOME = ROOT / 'codex-home'
+CODEX_RELEASES = ROOT / 'tools' / 'cli-releases'
+CODEX_ACTIVE = CODEX_RELEASES / 'active.txt'
 
 
 def prepare_environment():
@@ -62,6 +64,13 @@ def find_codex():
         path=Path(explicit).expanduser().resolve(strict=True)
         if not path.is_file():raise RuntimeError('PDF2ZH_CODEX_EXE 必须是可执行文件。')
         return str(path)
+    if os.name == 'nt':
+        try:
+            selected = (CODEX_RELEASES / CODEX_ACTIVE.read_text(encoding='utf-8').strip()).resolve()
+            if selected.is_relative_to(CODEX_RELEASES.resolve()) and selected.is_file() and selected.name == 'codex.exe':
+                return str(selected)
+        except (OSError, ValueError):
+            pass
     candidates=list((ROOT/'tools/node_modules').glob('**/codex.exe')) if os.name=='nt' else []
     candidates=[p for p in candidates if p.is_file()]
     if candidates:return str(candidates[0])

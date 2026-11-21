@@ -16,9 +16,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from runtime import ROOT, CODEX_HOME, CODE_ROOT, PROJECT_ROOT, OUTPUT_ROOT, prepare_environment, translation_profile, open_file
 from model_catalog import fetch_models, load_cached_models, save_translation_selection
+from cli_update import check_update, install_update, update_available
 
 SETTINGS = ROOT / 'config' / 'gui-settings.json'
 HIDDEN = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+CHECKBOX_LABEL_GAP = 6
 
 
 def validate_pages(text, page_count):
@@ -109,12 +111,17 @@ def checkbox_images(window):
     """Draw our own tick indicators; clam's built-in indicator uses a cross."""
     size = max(16, round(16 * float(window.tk.call('tk', 'scaling')) / (96 / 72)))
     images = []
-    for selected, disabled in [(False, False), (True, False), (False, True), (True, True)]:
-        image = tk.PhotoImage(master=window, width=size+6, height=size)
+    states = [(False, False, False), (True, False, False),
+              (False, True, False), (True, True, False),
+              (False, False, True), (True, False, True)]
+    for selected, disabled, hovered in states:
+        image = tk.PhotoImage(master=window, width=size+CHECKBOX_LABEL_GAP, height=size)
         border = '#087f8c' if selected else '#ccd7e2'
         background = '#087f8c' if selected else '#f8fafc'
         if disabled:
             border, background = '#becbd6', '#c5d8db' if selected else '#edf1f5'
+        elif hovered:
+            border, background = ('#066c78', '#066c78') if selected else ('#087f8c', '#e8f5f4')
         image.put(border, to=(0, 0, size, size))
         image.put(background, to=(1, 1, size-1, size-1))
         if selected:
@@ -148,6 +155,7 @@ class TranslationWindow:
         self.paused_settings = None
         self.models = []
         self.catalog_loading = False
+        self.cli_update_in_progress = False
         self.login_in_progress = False
         self.login_process = None
         self.login_cancel_requested = threading.Event()
@@ -187,7 +195,9 @@ class TranslationWindow:
 
     def _build(self):
         w = self.window
-        w.title('pdf2zh-viacodex · 论文 PDF 翻译')
+        w.title('pdf2zh-viacodex')
+        if os.name == 'nt':
+            w.iconbitmap(str(CODE_ROOT / 'assets' / 'translation.ico'))
         work_left, work_top = 0, 0
         work_width, work_height = w.winfo_screenwidth(), w.winfo_screenheight() - 48
         if os.name == 'nt':
@@ -205,6 +215,15 @@ class TranslationWindow:
         w.configure(bg='#f3f6fa')
         style = ttk.Style(w)
         style.theme_use('clam')
+        # Suppress keyboard traversal and Space activation without altering text input.
+        def ignore_key(_event):
+            return 'break'
+
+        for sequence in ('<Tab>', '<Shift-Tab>', '<<NextWindow>>', '<<PrevWindow>>'):
+            w.bind_class('PdfNoTab', sequence, ignore_key)
+            w.bind_class('ComboboxListbox', sequence, ignore_key)
+        for control_class in ('TButton', 'TCheckbutton', 'TCombobox', 'ComboboxListbox'):
+            w.bind_class(control_class, '<KeyPress-space>', ignore_key)
         style.configure('.', font=('Microsoft YaHei UI', 10), background='#f3f6fa', foreground='#162b3d')
         style.configure('Card.TFrame', background='white')
         style.configure('Card.TLabel', background='white')
@@ -214,20 +233,32 @@ class TranslationWindow:
         style.configure('CardHint.TLabel', background='white', foreground='#718096', font=('Microsoft YaHei UI', 9))
         style.configure('TButton', background='white', foreground='#162b3d', bordercolor='#dfe7ef', lightcolor='#dfe7ef', darkcolor='#dfe7ef', padding=(12, 7), relief='solid', borderwidth=1)
         style.map('TButton', background=[('active', '#e8f5f4')], foreground=[('disabled', '#9ba8b7')])
+        # Keep the button border and padding, but omit Clam's dashed focus outline.
+        style.layout('TButton', [('Button.border', {
+            'sticky': 'nswe', 'border': 1, 'children': [('Button.padding', {
+                'sticky': 'nswe', 'children': [('Button.label', {'sticky': 'nswe'})],
+            })],
+        })])
+        style.configure('More.TButton', padding=(3, 0), borderwidth=0, background='#f3f6fa',
+                        bordercolor='#f3f6fa', lightcolor='#f3f6fa', darkcolor='#f3f6fa',
+                        font=('Microsoft YaHei UI', 13, 'bold'))
+        style.configure('MenuItem.TButton', anchor='w', padding=(8, 3), borderwidth=0,
+                        bordercolor='white', lightcolor='white', darkcolor='white')
         style.configure('Primary.TButton', background='#087f8c', foreground='white', padding=(22, 9), bordercolor='#087f8c', font=('Microsoft YaHei UI', 10, 'bold'))
         style.map('Primary.TButton', background=[('disabled', '#b7cdd1'), ('active', '#066c78')], foreground=[('disabled', 'white'), ('!disabled', 'white')])
         style.configure('TEntry', padding=6, fieldbackground='#f8fafc', bordercolor='#dfe7ef', lightcolor='#dfe7ef', darkcolor='#dfe7ef')
         style.configure('TCombobox', padding=6, fieldbackground='#f8fafc', background='#f8fafc', bordercolor='#dfe7ef', lightcolor='#dfe7ef', darkcolor='#dfe7ef', arrowcolor='#087f8c', arrowsize=14)
         style.map('TCombobox', fieldbackground=[('disabled', '#edf1f5'), ('readonly', '#f8fafc')], foreground=[('disabled', '#9ba8b7'), ('readonly', '#162b3d')], background=[('disabled', '#edf1f5'), ('active', '#e8f5f4'), ('readonly', '#f8fafc')], bordercolor=[('focus', '#dfe7ef'), ('active', '#087f8c')], selectbackground=[('readonly', '#f8fafc')], selectforeground=[('readonly', '#162b3d')])
         self.checkbox_images = checkbox_images(w)
-        unchecked, checked, disabled, disabled_checked = self.checkbox_images
+        unchecked, checked, disabled, disabled_checked, hover, checked_hover = self.checkbox_images
         style.element_create('Paper.Check.indicator', 'image', unchecked,
                              ('disabled', 'selected', disabled_checked),
-                             ('selected', checked), ('disabled', disabled), sticky='')
+                             ('disabled', disabled),
+                             ('user1', 'selected', checked_hover), ('user1', hover),
+                             ('selected', checked), sticky='')
         style.layout('TCheckbutton', [('Checkbutton.padding', {'sticky': 'nswe', 'children': [
             ('Paper.Check.indicator', {'side': 'left', 'sticky': ''}),
-            ('Checkbutton.focus', {'side': 'left', 'sticky': 'w', 'children': [
-                ('Checkbutton.label', {'sticky': 'nswe'})]})]})])
+            ('Checkbutton.label', {'side': 'left', 'sticky': 'w'})]})])
         style.configure('TCheckbutton', background='white', padding=0)
         style.map('TCheckbutton', background=[('active', 'white')], indicatorbackground=[('selected', '#087f8c'), ('!selected', '#f8fafc')], indicatorforeground=[('selected', 'white')])
         style.configure('Horizontal.TProgressbar', background='#087f8c', troughcolor='#dfe7ef', borderwidth=0, thickness=5)
@@ -241,7 +272,8 @@ class TranslationWindow:
         header = ttk.Frame(outer)
         header.grid(row=0, column=0, sticky='ew', pady=(0, 14))
         header.columnconfigure(1, weight=1)
-        tk.Label(header, text='译', bg='#087f8c', fg='white', font=('Microsoft YaHei UI', 19, 'bold'), padx=10, pady=4).grid(row=0, column=0, rowspan=2, padx=(0, 14))
+        self.header_icon = tk.PhotoImage(master=w, file=str(CODE_ROOT / 'assets' / 'translation-header.png'))
+        ttk.Label(header, image=self.header_icon).grid(row=0, column=0, rowspan=2, padx=(0, 14))
         ttk.Label(header, text='论文 PDF 翻译', font=('Microsoft YaHei UI', 19, 'bold')).grid(row=0, column=1, sticky='w')
         ttk.Label(header, text='pdf2zh-viacodex  /  英文 → 简体中文', style='Hint.TLabel').grid(row=1, column=1, sticky='w', pady=(2, 0))
         self.login_button = ttk.Button(header, text='登录 ChatGPT', command=self.login_chatgpt)
@@ -252,6 +284,19 @@ class TranslationWindow:
                                       font=('Microsoft YaHei UI', 9))
         self.account_badge.grid(row=0, column=2, rowspan=2, sticky='e', padx=(12, 14))
         self.refresh_account_status()
+        if os.name == 'nt':
+            from titlebar import CaptionControl
+            menu_host = CaptionControl(w)
+        else:
+            menu_host = header
+        self.more_button = ttk.Button(menu_host, text='⋯', width=2, style='More.TButton',
+                                      command=self.show_settings_menu)
+        if menu_host is header:
+            self.more_button.grid(row=0, column=4, rowspan=2, sticky='e', padx=(10, 0))
+        else:
+            self.more_button.pack(fill='both', expand=True, padx=1, pady=1)
+        self.more_button.bind('<Return>', lambda event: self.more_button.invoke())
+        self.settings_menu = None
 
         def card(row, number, title, expand=False):
             box = ttk.Frame(outer, style='Card.TFrame', padding=(18, 8))
@@ -358,8 +403,38 @@ class TranslationWindow:
         self.log_button = ttk.Button(actions, text='查看本次日志', command=self.open_log, state='disabled')
         self.log_button.pack(side='right')
         ttk.Button(actions, text='打开输出文件夹', command=self.open_outputs).pack(side='right', padx=(0, 12))
-        self.controls = [self.file_entry, self.browse_button, self.output_entry, self.output_button, self.line_check, self.pages_check, self.open_check, self.remember_check, self.chinese_check, self.bilingual_check]
+        checkboxes = (self.line_check, self.pages_check, self.open_check, self.remember_check,
+                      self.chinese_check, self.bilingual_check)
+        for checkbox in checkboxes:
+            checkbox.bind('<ButtonPress-1>', self.filter_checkbox_click)
+            checkbox.bind('<ButtonRelease-1>', self.filter_checkbox_click)
+            checkbox.bind('<Enter>', self.update_checkbox_hover)
+            checkbox.bind('<Motion>', self.update_checkbox_hover)
+            checkbox.bind('<Leave>', lambda event: event.widget.state(['!user1']))
+        self.controls = [self.file_entry, self.browse_button, self.output_entry, self.output_button,
+                         *checkboxes]
+        self.disable_tab_navigation(w)
         self.sync_pages()
+
+    def disable_tab_navigation(self, widget):
+        widget.bindtags(('PdfNoTab', *widget.bindtags()))
+        for child in widget.winfo_children():
+            self.disable_tab_navigation(child)
+
+    def checkbox_hit(self, event):
+        box_width = self.checkbox_images[0].width() - CHECKBOX_LABEL_GAP
+        return (0 <= event.x < box_width
+                and event.widget.identify(event.x, event.y) == 'Paper.Check.indicator')
+
+    def update_checkbox_hover(self, event):
+        event.widget.state(['user1' if self.checkbox_hit(event) else '!user1'])
+
+    def filter_checkbox_click(self, event):
+        if self.checkbox_hit(event):
+            return
+        # Release outside the square cancels a press that started inside it.
+        event.widget.state(['!pressed'])
+        return 'break'
 
     def style_dropdown(self, combo):
         # The popup is a Tk listbox, so ttk.Style alone cannot theme it.
@@ -407,16 +482,19 @@ class TranslationWindow:
             self.reasoning_effort.set(default if default in row['efforts'] else row['efforts'][0])
 
     def sync_model_controls(self):
-        state = 'disabled' if self.busy or self.login_in_progress else 'readonly'
+        blocked = self.busy or self.login_in_progress or self.cli_update_in_progress
+        state = 'disabled' if blocked else 'readonly'
         self.model_box.configure(state=state)
         self.effort_box.configure(state=state)
         cancelling = self.login_in_progress and self.login_cancel_requested.is_set()
-        self.refresh_models_button.configure(state='disabled' if self.busy or self.catalog_loading or self.login_in_progress else 'normal')
+        catalog_blocked = blocked or self.catalog_loading
+        self.refresh_models_button.configure(state='disabled' if catalog_blocked else 'normal')
+        self.more_button.configure(state='disabled' if catalog_blocked else 'normal')
         self.login_button.configure(text='取消登录' if self.login_in_progress else ('切换账号' if self.logged_in else '登录 ChatGPT'),
-            state='disabled' if self.busy or self.catalog_loading or cancelling else 'normal')
-        self.start_button.configure(state='disabled' if self.busy or self.login_in_progress else 'normal')
+            state='disabled' if self.busy or self.catalog_loading or cancelling or self.cli_update_in_progress else 'normal')
+        self.start_button.configure(state='disabled' if blocked else 'normal')
         if not self.busy and self.paused_command:
-            self.stop_button.configure(state='disabled' if self.login_in_progress else 'normal')
+            self.stop_button.configure(state='disabled' if blocked else 'normal')
 
     def cancel_login(self):
         if not self.login_in_progress or self.login_cancel_requested.is_set():
@@ -434,7 +512,7 @@ class TranslationWindow:
         if self.login_in_progress:
             self.cancel_login()
             return
-        if self.busy or self.catalog_loading:
+        if self.busy or self.catalog_loading or self.cli_update_in_progress:
             return
         sessions = ROOT / 'login-sessions'
         sessions.mkdir(mode=0o700, exist_ok=True)
@@ -472,8 +550,94 @@ class TranslationWindow:
                 self.events.put(('login_done', return_code))
         threading.Thread(target=worker,daemon=True).start()
 
+    def show_settings_menu(self):
+        if self.settings_menu is not None:
+            self.dismiss_settings_menu()
+            return
+        button = self.more_button
+        popup = self.settings_menu = tk.Toplevel(self.window)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.transient(self.window)
+        popup.configure(background='#dfe7ef', padx=1, pady=1)
+        panel = ttk.Frame(popup, style='Card.TFrame', padding=3)
+        panel.pack(fill='both', expand=True)
+        item = ttk.Button(panel, text='检查 Codex CLI 更新', style='MenuItem.TButton',
+                          command=self.choose_cli_update)
+        item.pack(fill='x')
+        self.disable_tab_navigation(popup)
+
+        def dismiss_outside(event):
+            left, top = popup.winfo_rootx(), popup.winfo_rooty()
+            if not (left <= event.x_root < left + popup.winfo_width()
+                    and top <= event.y_root < top + popup.winfo_height()):
+                self.dismiss_settings_menu()
+                return 'break'
+
+        popup.bind('<ButtonPress-1>', dismiss_outside)
+        popup.bind('<Escape>', lambda event: self.dismiss_settings_menu())
+        popup.bind('<Alt-F4>', lambda event: self.dismiss_settings_menu())
+        popup.bind('<FocusOut>', lambda event: popup.after_idle(
+            lambda: self.dismiss_settings_menu() if self.settings_menu is popup and popup.focus_displayof() != item else None))
+        item.bind('<Return>', lambda event: item.invoke())
+        popup.update_idletasks()
+        if os.name == 'nt':
+            from titlebar import caption_menu_origin, keep_above_owner
+            x, y = caption_menu_origin(self.window)
+        else:
+            x = button.winfo_rootx() + button.winfo_width() - popup.winfo_reqwidth()
+            y = button.winfo_rooty() + button.winfo_height() + 3
+            if y + popup.winfo_reqheight() + 4 > self.file_entry.winfo_rooty():
+                y = button.winfo_rooty() - popup.winfo_reqheight() - 3
+        popup.geometry(f'+{max(0, x)}+{max(0, y)}')
+        popup.deiconify()
+        popup.wait_visibility()
+        if os.name == 'nt':
+            keep_above_owner(popup, self.window, (x, y, popup.winfo_reqwidth(), popup.winfo_reqheight()))
+        popup.grab_set()
+        item.focus_set()
+
+    def dismiss_settings_menu(self):
+        popup = self.settings_menu
+        if popup is not None:
+            self.settings_menu = None
+            popup.destroy()
+            self.more_button.focus_set()
+
+    def choose_cli_update(self):
+        self.dismiss_settings_menu()
+        self.check_cli_update()
+
+    def run_cli_update_worker(self, event, operation, *args):
+        self.cli_update_in_progress = True
+        self.sync_model_controls()
+
+        def worker():
+            try:
+                self.events.put((event, operation(*args)))
+            except Exception as exc:
+                self.events.put(('cli_update_error', str(exc)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def check_cli_update(self):
+        if self.busy or self.catalog_loading or self.login_in_progress or self.cli_update_in_progress:
+            return
+        self.note('正在检查 Codex CLI 更新…')
+        self.run_cli_update_worker('cli_update_checked', check_update)
+
+    def confirm_cli_update(self, current, latest):
+        versions = f'当前版本：{current or "未检测到"}\n官方稳定版：{latest}'
+        if not update_available(current, latest):
+            messagebox.showinfo('检查 Codex CLI 更新', versions + '\n\n当前无需更新。', parent=self.window)
+        elif os.environ.get('PDF2ZH_CODEX_EXE'):
+            messagebox.showinfo('有新版 Codex CLI', versions + '\n\n请更新手动指定路径下的 Codex CLI。', parent=self.window)
+        elif messagebox.askyesno('有新版 Codex CLI', versions + '\n\n是否安装到本工具的运行目录？', parent=self.window):
+            self.note(f'正在安装 Codex CLI {latest}…')
+            self.run_cli_update_worker('cli_update_installed', install_update, latest)
+
     def refresh_models(self):
-        if self.busy or self.catalog_loading or self.login_in_progress:
+        if self.busy or self.catalog_loading or self.login_in_progress or self.cli_update_in_progress:
             return
         self.catalog_loading = True
         self.catalog_status.set('正在获取官方列表…')
@@ -609,7 +773,7 @@ class TranslationWindow:
             'output_chinese', 'output_bilingual', 'open_finished')}
 
     def start(self, resume=False):
-        if self.busy or self.login_in_progress:
+        if self.busy or self.login_in_progress or self.cli_update_in_progress:
             return
         try:
             if resume:
@@ -757,6 +921,20 @@ class TranslationWindow:
                     else:
                         self.status.set('登录未完成；原账号保留，请查看下方日志')
                         self.note(f'登录脚本退出码：{event[1]}。原账号保持不变。')
+                elif kind == 'cli_update_checked':
+                    self.cli_update_in_progress = False
+                    self.sync_model_controls()
+                    self.confirm_cli_update(*event[1])
+                elif kind == 'cli_update_installed':
+                    self.cli_update_in_progress = False
+                    self.sync_model_controls()
+                    self.note('Codex CLI 已更新，正在刷新模型列表。')
+                    self.refresh_models()
+                elif kind == 'cli_update_error':
+                    self.cli_update_in_progress = False
+                    self.sync_model_controls()
+                    self.note('Codex CLI 检查或安装失败：' + event[1])
+                    messagebox.showerror('Codex CLI 更新未完成', event[1], parent=self.window)
                 elif kind == 'models':
                     self.catalog_loading = False
                     self.apply_catalog(event[1])
@@ -806,6 +984,9 @@ class TranslationWindow:
             open_file(path)
 
     def close(self):
+        if self.cli_update_in_progress:
+            messagebox.showinfo('Codex CLI 更新', '请等待当前的检查或安装完成。', parent=self.window)
+            return
         if self.login_in_progress:
             self.cancel_login()
         if self.busy:

@@ -120,7 +120,7 @@ class LoginTests(unittest.TestCase):
     @unittest.skipUnless(os.name=='nt','Windows login script launcher')
     def test_gui_calls_shared_cmd_and_streams_login_output(self):
         from pdf_gui import TranslationWindow
-        window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
+        window=SimpleNamespace(busy=False,catalog_loading=False,cli_update_in_progress=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
                                events=queue.Queue(),status=Mock(),sync_model_controls=Mock())
         process=Mock()
         process.wait.return_value=0
@@ -173,7 +173,7 @@ class LoginTests(unittest.TestCase):
                 for name in ('登录ChatGPT.cmd',):
                     (project/name).write_bytes((PROJECT_ROOT/name).read_bytes())
                 (project/'scripts/run.ps1').write_text(f"Write-Output 'LOGIN_SCRIPT_REACHED'\nexit {exit_code}\n",encoding='utf-8')
-                window=SimpleNamespace(busy=False,catalog_loading=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
+                window=SimpleNamespace(busy=False,catalog_loading=False,cli_update_in_progress=False,login_in_progress=False,login_process=None,login_cancel_requested=threading.Event(),
                                        events=queue.Queue(),status=Mock(),sync_model_controls=Mock())
                 with patch('pdf_gui.PROJECT_ROOT',project), patch('pdf_gui.threading.Thread') as thread:
                     thread.side_effect=lambda **kw:SimpleNamespace(start=kw['target'])
