@@ -175,14 +175,17 @@ class TranslationWindow:
         self.only_pages = tk.BooleanVar(value=bool(initial_pages) or preferences.get('only_pages', False))
         self.pages = tk.StringVar(value=initial_pages or preferences.get('pages', '1-3'))
         self.remove_numbers = tk.BooleanVar(value=remove_numbers or preferences.get('remove_numbers', False))
-        self.output_chinese = tk.BooleanVar(value=preferences.get('output_chinese', True))
-        self.output_bilingual = tk.BooleanVar(value=preferences.get('output_bilingual', False))
+        self.output_chinese = tk.BooleanVar(value=preferences.get('output_chinese', False))
+        self.output_bilingual = tk.BooleanVar(value=preferences.get('output_bilingual', True))
         self.open_finished = tk.BooleanVar(value=preferences.get('open_finished', True))
         self.remember = tk.BooleanVar(value=preferences.get('remember', True))
         self.status = tk.StringVar(value='等待选择 PDF')
         self.elapsed = tk.StringVar(value='')
         self.details = tk.StringVar(value='选择英文 PDF 后，点击“开始翻译”。')
         self._build()
+        if os.name == 'nt':
+            from file_drop import FileDropTarget
+            self.file_drop = FileDropTarget(window, lambda paths: self.events.put(('files_dropped', paths)))
         cached = load_cached_models()
         if cached:
             self.apply_catalog(cached, cached=True)
@@ -714,13 +717,26 @@ class TranslationWindow:
             initial = current.parent if current.is_file() else PROJECT_ROOT
         chosen = filedialog.askopenfilename(parent=self.window, title='选择英文论文 PDF', initialdir=str(initial), filetypes=[('PDF 文件', '*.pdf')])
         if chosen:
-            self.pdf.set(chosen)
-            self.last_pdf_directory = str(Path(chosen).resolve().parent)
-            self.inspect_file()
-            try:
-                self.save_settings()
-            except OSError as exc:
-                self.note('无法保存上次选择的文件夹：' + str(exc))
+            self.select_pdf(chosen)
+
+    def select_pdf(self, filename):
+        self.pdf.set(filename)
+        self.last_pdf_directory = str(Path(filename).resolve().parent)
+        self.inspect_file()
+        try:
+            self.save_settings()
+        except OSError as exc:
+            self.note('无法保存上次选择的文件夹：' + str(exc))
+
+    def select_dropped_pdf(self, paths):
+        if self.busy:
+            return
+        for filename in paths:
+            path = Path(filename)
+            if path.suffix.lower() == '.pdf' and path.is_file():
+                self.select_pdf(filename)
+                return
+        self.note('请拖入一个 PDF 文件。')
 
     def browse_output(self):
         initial = Path(self.output_directory.get())
@@ -876,7 +892,16 @@ class TranslationWindow:
             self.status.set('翻译完成')
             for item in outputs:
                 label = '中英对照 PDF' if item['mode'] == 'bilingual' else '纯中文 PDF'
-                self.note(label + ' 已保存：' + item['path'])
+                path = item['path']
+                hint = ''
+                # MAX_PATH counts UTF-16 code units of the ordinary Windows path.
+                if path[:8].upper() == '\\\\?\\UNC\\':
+                    ordinary_path = '\\\\' + path[8:]
+                else:
+                    ordinary_path = path.removeprefix('\\\\?\\')
+                if len(ordinary_path.encode('utf-16-le', errors='surrogatepass')) // 2 >= 260:
+                    hint = '（文件路径长度大于259字符可能导致浏览器无法正常打开）'
+                self.note(label + ' 已保存：' + path + hint)
             if self.open_finished.get() and not self.close_when_done:
                 try:
                     open_file(self.final_pdf)
@@ -899,7 +924,9 @@ class TranslationWindow:
             while True:
                 event = self.events.get_nowait()
                 kind = event[0]
-                if kind == 'login_done':
+                if kind == 'files_dropped':
+                    self.select_dropped_pdf(event[1])
+                elif kind == 'login_done':
                     self.refresh_account_status()
                     self.login_in_progress = False
                     self.login_cancel_requested.clear()
